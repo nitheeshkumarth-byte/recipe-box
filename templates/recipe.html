@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}{{ recipe.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('home') }}" class="back-link">&larr; Back to all recipes</a>
+
+{% if recipe.image_filename %}
+<img src="{{ url_for('static', filename='uploads/' ~ recipe.image_filename) }}" alt="{{ recipe.title }}"
+    class="recipe-photo">
+{% endif %}
+
+<div class="recipe-card">
+    <h1>
+        {% if recipe.is_favorite %}<span class="star">★</span>{% endif %}
+        {{ recipe.title }}
+    </h1>
+
+    {% if recipe.tags %}
+    <div class="tags">
+        {% for tag in recipe.tags %}
+        <a href="{{ url_for('home', tag=tag.name) }}" class="tag">{{ tag.name }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="rating">
+        <p>Your rating:
+            {% for i in range(1, 6) %}
+            {% if recipe.rating and i <= recipe.rating %}★{% else %}☆{% endif %} {% endfor %} </p>
+
+                <form method="POST" action="{{ url_for('rate_recipe', recipe_id=recipe.id) }}" class="rating-form">
+                    {% for i in range(1, 6) %}
+                    <button type="submit" name="rating" value="{{ i }}" class="star-btn">
+                        {{ "★" if recipe.rating and i <= recipe.rating else "☆" }} </button>
+                            {% endfor %}
+                </form>
+    </div>
+
+    <div id="origin-section">
+        {% if recipe.origin %}
+        <p id="origin-text">{{ recipe.origin }}</p>
+        {% else %}
+        <button id="origin-btn" data-id="{{ recipe.id }}">✨ Where does this dish come from?</button>
+        <p id="origin-text"></p>
+        {% endif %}
+    </div>
+
+    <h2>Ingredients</h2>
+    <p>
+        Servings:
+        <input type="number" id="servings-input" min="1" value="{{ recipe.servings }}">
+        <span id="servings-note">(original recipe: {{ recipe.servings }})</span>
+    </p>
+
+    <ul id="ingredient-list">
+        {% for ing in recipe.ingredient_lines %}
+        <li data-base-amount="{{ ing.amount }}" data-unit="{{ ing.unit or '' }}" data-name="{{ ing.name }}">
+            <span class="ing-amount">{{ ing.amount|round(2) }}</span>
+            <span class="ing-unit">{{ ing.unit or '' }}</span>
+            <span class="ing-name">{{ ing.name }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <div id="nutrition-section">
+        {% if recipe.calories is not none %}
+        <div class="nutrition-facts">
+            <strong>Nutrition (per serving, estimated):</strong>
+            <ul>
+                <li>{{ recipe.calories }} calories</li>
+                <li>{{ recipe.protein_g }}g protein</li>
+                <li>{{ recipe.carbs_g }}g carbs</li>
+                <li>{{ recipe.fat_g }}g fat</li>
+            </ul>
+        </div>
+        {% else %}
+        <button id="nutrition-btn" data-id="{{ recipe.id }}">🥗 Estimate nutrition</button>
+        <p id="nutrition-error"></p>
+        {% endif %}
+    </div>
+
+    <h2>Instructions</h2>
+    <p>{{ recipe.instructions }}</p>
+
+    <p>
+        <a href="{{ url_for('edit_recipe', recipe_id=recipe.id) }}">Edit</a>
+
+    <form method="POST" action="{{ url_for('toggle_favorite', recipe_id=recipe.id) }}" style="display:inline;">
+        <button type="submit" class="favorite-btn">
+            {{ "★ Favorited" if recipe.is_favorite else "☆ Add to Favorites" }}
+        </button>
+    </form>
+    </p>
+
+    <form method="POST" action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}"
+        onsubmit="return confirm('Delete this recipe?');">
+        <button type="submit">Delete</button>
+    </form>
+</div>
+
+<script>
+    const originBtn = document.getElementById("origin-btn");
+    if (originBtn) {
+        originBtn.addEventListener("click", async () => {
+            const recipeId = originBtn.dataset.id;
+            const textEl = document.getElementById("origin-text");
+
+            originBtn.disabled = true;
+            originBtn.textContent = "Thinking...";
+
+            try {
+                const response = await fetch(`/api/origin/${recipeId}`, { method: "POST" });
+                const data = await response.json();
+
+                if (data.success) {
+                    textEl.textContent = data.origin;
+                    originBtn.style.display = "none";
+                } else {
+                    textEl.textContent = "Couldn't fetch that right now. Try again later.";
+                }
+            } catch (err) {
+                textEl.textContent = "Something went wrong.";
+            }
+
+            originBtn.disabled = false;
+            originBtn.textContent = "✨ Where does this dish come from?";
+        });
+    }
+</script>
+
+<script>
+    const baseServings = {{ recipe.servings }};
+    const servingsInput = document.getElementById("servings-input");
+    const servingsNote = document.getElementById("servings-note");
+
+    servingsInput.addEventListener("input", () => {
+        const newServings = parseFloat(servingsInput.value) || baseServings;
+        const scale = newServings / baseServings;
+
+        document.querySelectorAll("#ingredient-list li").forEach(li => {
+            const baseAmount = parseFloat(li.dataset.baseAmount);
+            const scaledAmount = baseAmount * scale;
+            li.querySelector(".ing-amount").textContent = scaledAmount.toFixed(2).replace(/\.00$/, "");
+        });
+
+        servingsNote.textContent = `(original recipe: ${baseServings})`;
+    });
+</script>
+
+<script>
+    const nutritionBtn = document.getElementById("nutrition-btn");
+    if (nutritionBtn) {
+        nutritionBtn.addEventListener("click", async () => {
+            const recipeId = nutritionBtn.dataset.id;
+            const errorEl = document.getElementById("nutrition-error");
+
+            nutritionBtn.disabled = true;
+            nutritionBtn.textContent = "Estimating...";
+
+            try {
+                const response = await fetch(`/api/nutrition/${recipeId}`, { method: "POST" });
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById("nutrition-section").innerHTML = `
+                    <div class="nutrition-facts">
+                        <strong>Nutrition (per serving, estimated):</strong>
+                        <ul>
+                            <li>${data.calories} calories</li>
+                            <li>${data.protein_g}g protein</li>
+                            <li>${data.carbs_g}g carbs</li>
+                            <li>${data.fat_g}g fat</li>
+                        </ul>
+                    </div>
+                `;
+                } else {
+                    errorEl.textContent = data.error || "Something went wrong.";
+                    nutritionBtn.disabled = false;
+                    nutritionBtn.textContent = "🥗 Estimate nutrition";
+                }
+            } catch (err) {
+                errorEl.textContent = "Something went wrong.";
+                nutritionBtn.disabled = false;
+                nutritionBtn.textContent = "🥗 Estimate nutrition";
+            }
+        });
+    }
+</script>
+{% endblock %}

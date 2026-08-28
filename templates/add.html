@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Recipe' if recipe else 'Add Recipe' }}{% endblock %}
+
+{% block content %}
+<h1>{{ 'Edit Recipe' if recipe else 'Add a New Recipe' }}</h1>
+
+<form method="POST" enctype="multipart/form-data">
+    <label>Title:<br>
+        <input type="text" name="title" required value="{{ recipe.title if recipe else '' }}">
+    </label><br><br>
+
+    <label>Photo:<br>
+        <input type="file" name="image" accept="image/*">
+        {% if recipe and recipe.image_filename %}
+        <br><img src="{{ url_for('static', filename='uploads/' ~ recipe.image_filename) }}" alt="{{ recipe.title }}"
+            style="max-width: 200px; margin-top: 8px; border-radius: 8px;">
+        <p class="hint">Uploading a new photo will replace this one.</p>
+        {% endif %}
+    </label><br><br>
+
+    <label>Servings:<br>
+        <input type="number" name="servings" min="1" value="{{ recipe.servings if recipe else 4 }}">
+    </label><br><br>
+
+    <!-- rest of the form stays the same -->
+
+    <label>Ingredients:</label>
+    <div id="ingredient-rows">
+        {% if recipe and recipe.ingredient_lines %}
+        {% for ing in recipe.ingredient_lines %}
+        <div class="ingredient-row">
+            <input type="number" step="any" name="ing_amount" placeholder="Amount" value="{{ ing.amount }}">
+            <input type="text" name="ing_unit" placeholder="Unit (cup, g...)" value="{{ ing.unit }}">
+            <input type="text" name="ing_name" placeholder="Ingredient name" value="{{ ing.name }}">
+            <button type="button" class="remove-row-btn">✕</button>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="ingredient-row">
+            <input type="number" step="any" name="ing_amount" placeholder="Amount">
+            <input type="text" name="ing_unit" placeholder="Unit (cup, g...)">
+            <input type="text" name="ing_name" placeholder="Ingredient name">
+            <button type="button" class="remove-row-btn">✕</button>
+        </div>
+        {% endif %}
+    </div>
+    <button type="button" id="add-row-btn">+ Add ingredient</button>
+    <br><br>
+
+    <label>Instructions:<br>
+        <textarea name="instructions" required>{{ recipe.instructions if recipe else '' }}</textarea>
+    </label><br><br>
+
+    <label>Tags (comma-separated):<br>
+        <input type="text" name="tags" value="{{ recipe.tags|map(attribute='name')|join(', ') if recipe else '' }}">
+    </label><br><br>
+
+    <button type="submit">{{ 'Save Changes' if recipe else 'Save Recipe' }}</button>
+</form>
+
+<script>
+    document.getElementById("add-row-btn").addEventListener("click", () => {
+        const container = document.getElementById("ingredient-rows");
+        const row = document.createElement("div");
+        row.className = "ingredient-row";
+        row.innerHTML = `
+        <input type="number" step="any" name="ing_amount" placeholder="Amount">
+        <input type="text" name="ing_unit" placeholder="Unit (cup, g...)">
+        <input type="text" name="ing_name" placeholder="Ingredient name">
+        <button type="button" class="remove-row-btn">✕</button>
+    `;
+        container.appendChild(row);
+    });
+
+    document.getElementById("ingredient-rows").addEventListener("click", (e) => {
+        if (e.target.classList.contains("remove-row-btn")) {
+            e.target.closest(".ingredient-row").remove();
+        }
+    });
+</script>
+{% endblock %}

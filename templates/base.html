@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{% block title %}Recipe Box{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header>
+        <a href="{{ url_for('home') }}" class="logo">🍲 Recipe Box</a>
+        <a href="{{ url_for('add_recipe') }}" class="btn">+ Add Recipe</a>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        document.querySelectorAll(".delete-btn").forEach(button => {
+            button.addEventListener("click", async () => {
+                const recipeId = button.dataset.id;
+
+                if (!confirm("Delete this recipe?")) return;
+
+                const response = await fetch(`/api/delete/${recipeId}`, {
+                    method: "POST"
+                });
+
+                if (response.ok) {
+                    document.getElementById(`recipe-${recipeId}`).remove();
+                } else {
+                    alert("Something went wrong deleting that recipe.");
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
