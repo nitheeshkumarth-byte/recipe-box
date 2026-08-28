@@ -22,8 +22,6 @@
         <input type="number" name="servings" min="1" value="{{ recipe.servings if recipe else 4 }}">
     </label><br><br>
 
-    <!-- rest of the form stays the same -->
-
     <label>Ingredients:</label>
     <div id="ingredient-rows">
         {% if recipe and recipe.ingredient_lines %}

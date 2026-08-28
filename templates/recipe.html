@@ -66,11 +66,15 @@
         {% if recipe.calories is not none %}
         <div class="nutrition-facts">
             <strong>Nutrition (per serving, estimated):</strong>
-            <ul>
-                <li>{{ recipe.calories }} calories</li>
-                <li>{{ recipe.protein_g }}g protein</li>
-                <li>{{ recipe.carbs_g }}g carbs</li>
-                <li>{{ recipe.fat_g }}g fat</li>
+            <ul id="nutrition-values"
+                data-calories="{{ recipe.calories }}"
+                data-protein="{{ recipe.protein_g }}"
+                data-carbs="{{ recipe.carbs_g }}"
+                data-fat="{{ recipe.fat_g }}">
+                <li><span class="nutrition-value" data-nut="calories">{{ recipe.calories }}</span> calories</li>
+                <li><span class="nutrition-value" data-nut="protein">{{ recipe.protein_g }}</span>g protein</li>
+                <li><span class="nutrition-value" data-nut="carbs">{{ recipe.carbs_g }}</span>g carbs</li>
+                <li><span class="nutrition-value" data-nut="fat">{{ recipe.fat_g }}</span>g fat</li>
             </ul>
         </div>
         {% else %}
@@ -133,6 +137,28 @@
     const servingsInput = document.getElementById("servings-input");
     const servingsNote = document.getElementById("servings-note");
 
+    const formatNutrition = (value) => {
+        if (value === null || value === undefined || isNaN(value)) return "";
+        return Math.round(value);
+    };
+
+    const updateNutritionScale = (scale) => {
+        const valuesEl = document.getElementById("nutrition-values");
+        if (!valuesEl) return;
+
+        const bases = {
+            calories: parseFloat(valuesEl.dataset.calories),
+            protein: parseFloat(valuesEl.dataset.protein),
+            carbs: parseFloat(valuesEl.dataset.carbs),
+            fat: parseFloat(valuesEl.dataset.fat),
+        };
+
+        document.querySelectorAll(".nutrition-value").forEach(span => {
+            const key = span.dataset.nut;
+            span.textContent = formatNutrition(bases[key] * scale);
+        });
+    };
+
     servingsInput.addEventListener("input", () => {
         const newServings = parseFloat(servingsInput.value) || baseServings;
         const scale = newServings / baseServings;
@@ -143,6 +169,7 @@
             li.querySelector(".ing-amount").textContent = scaledAmount.toFixed(2).replace(/\.00$/, "");
         });
 
+        updateNutritionScale(scale);
         servingsNote.textContent = `(original recipe: ${baseServings})`;
     });
 </script>
@@ -165,14 +192,20 @@
                     document.getElementById("nutrition-section").innerHTML = `
                     <div class="nutrition-facts">
                         <strong>Nutrition (per serving, estimated):</strong>
-                        <ul>
-                            <li>${data.calories} calories</li>
-                            <li>${data.protein_g}g protein</li>
-                            <li>${data.carbs_g}g carbs</li>
-                            <li>${data.fat_g}g fat</li>
+                        <ul id="nutrition-values"
+                            data-calories="${data.calories}"
+                            data-protein="${data.protein_g}"
+                            data-carbs="${data.carbs_g}"
+                            data-fat="${data.fat_g}">
+                            <li><span class="nutrition-value" data-nut="calories">${data.calories}</span> calories</li>
+                            <li><span class="nutrition-value" data-nut="protein">${data.protein_g}</span>g protein</li>
+                            <li><span class="nutrition-value" data-nut="carbs">${data.carbs_g}</span>g carbs</li>
+                            <li><span class="nutrition-value" data-nut="fat">${data.fat_g}</span>g fat</li>
                         </ul>
                     </div>
                 `;
+                    const currentServings = parseFloat(document.getElementById("servings-input").value) || baseServings;
+                    updateNutritionScale(currentServings / baseServings);
                 } else {
                     errorEl.textContent = data.error || "Something went wrong.";
                     nutritionBtn.disabled = false;

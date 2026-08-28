@@ -35,13 +35,14 @@ def allowed_file(filename):
 
 def save_uploaded_image(file):
     """Validates and saves an uploaded image file. Returns the saved
-    filename, or None if no valid file was provided."""
+    filename, or None if no file was provided, or the string "INVALID"
+    if a file was given but rejected (invalid type / too large)."""
     if not file or file.filename == "":
         return None
 
     if not allowed_file(file.filename):
         flash("Image must be a png, jpg, jpeg, gif, or webp file.", "error")
-        return None
+        return "INVALID"
 
     filename = secure_filename(file.filename)
     unique_filename = f"{os.urandom(8).hex()}_{filename}"
@@ -50,6 +51,18 @@ def save_uploaded_image(file):
     file.save(filepath)
 
     return unique_filename
+
+
+def delete_image_file(filename):
+    """Deletes an uploaded image from disk, ignoring missing files."""
+    if not filename:
+        return
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
 
 
 def get_or_create_tags(tag_string):
@@ -130,6 +143,8 @@ def view_recipe(recipe_id):
 def add_recipe():
     if request.method == "POST":
         image_filename = save_uploaded_image(request.files.get("image"))
+        if image_filename == "INVALID":
+            return render_template("add.html", recipe=None)
 
         new_recipe = Recipe(
             title=request.form["title"],
@@ -159,7 +174,10 @@ def edit_recipe(recipe_id):
         recipe.ingredient_lines = parse_ingredients_from_form()
 
         new_image = save_uploaded_image(request.files.get("image"))
+        if new_image == "INVALID":
+            return render_template("add.html", recipe=recipe)
         if new_image:
+            delete_image_file(recipe.image_filename)
             recipe.image_filename = new_image
 
         # Ingredients changed — clear cached nutrition so it gets recalculated
@@ -179,8 +197,10 @@ def edit_recipe(recipe_id):
 def delete_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
     title = recipe.title
+    image_filename = recipe.image_filename
     db.session.delete(recipe)
     db.session.commit()
+    delete_image_file(image_filename)
     flash(f'"{title}" was deleted.', "info")
     return redirect(url_for("home"))
 
@@ -188,8 +208,10 @@ def delete_recipe(recipe_id):
 @app.route("/api/delete/<int:recipe_id>", methods=["POST"])
 def api_delete_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
+    image_filename = recipe.image_filename
     db.session.delete(recipe)
     db.session.commit()
+    delete_image_file(image_filename)
     return jsonify({"success": True, "id": recipe_id})
 
 

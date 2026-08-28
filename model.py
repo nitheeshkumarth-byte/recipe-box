@@ -14,7 +14,6 @@ class Recipe(db.Model):
     title = db.Column(db.String(120), nullable=False)
     instructions = db.Column(db.Text, nullable=False)
     is_favorite = db.Column(db.Boolean, default=False, nullable=False)
-    notes = db.Column(db.Text, nullable=True)
     origin = db.Column(db.Text, nullable=True)
     rating = db.Column(db.Integer, nullable=True)
     servings = db.Column(db.Integer, default=4, nullable=False)
