@@ -24,16 +24,22 @@
     {% endif %}
 
     <div class="rating">
-        <p>Your rating:
-            {% for i in range(1, 6) %}
-            {% if recipe.rating and i <= recipe.rating %}★{% else %}☆{% endif %} {% endfor %} </p>
-
-                <form method="POST" action="{{ url_for('rate_recipe', recipe_id=recipe.id) }}" class="rating-form">
-                    {% for i in range(1, 6) %}
-                    <button type="submit" name="rating" value="{{ i }}" class="star-btn">
-                        {{ "★" if recipe.rating and i <= recipe.rating else "☆" }} </button>
-                            {% endfor %}
-                </form>
+        <div class="rating-display">
+            <span class="single-star">★</span>
+            <span class="rating-value">
+                {% if recipe.rating %}{{ recipe.rating }} / 5{% else %}Not rated yet{% endif %}
+            </span>
+        </div>
+        <form method="POST" action="{{ url_for('rate_recipe', recipe_id=recipe.id) }}" class="rating-form">
+            <label for="rating-select">Rate:</label>
+            <select name="rating" id="rating-select">
+                <option value="" disabled {{ 'selected' if not recipe.rating }}>Choose&hellip;</option>
+                {% for i in range(1, 6) %}
+                <option value="{{ i }}" {{ 'selected' if recipe.rating == i }}>{{ i }} star{{ '' if i == 1 else 's' }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="rate-btn">Rate</button>
+        </form>
     </div>
 
     <div id="origin-section">
@@ -86,20 +92,17 @@
     <h2>Instructions</h2>
     <p>{{ recipe.instructions }}</p>
 
-    <p>
-        <a href="{{ url_for('edit_recipe', recipe_id=recipe.id) }}">Edit</a>
-
-    <form method="POST" action="{{ url_for('toggle_favorite', recipe_id=recipe.id) }}" style="display:inline;">
-        <button type="submit" class="favorite-btn">
-            {{ "★ Favorited" if recipe.is_favorite else "☆ Add to Favorites" }}
-        </button>
-    </form>
-    </p>
-
-    <form method="POST" action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}"
-        onsubmit="return confirm('Delete this recipe?');">
-        <button type="submit">Delete</button>
-    </form>
+    <div class="actions-bar">
+        <a href="{{ url_for('edit_recipe', recipe_id=recipe.id) }}" class="action-btn edit-btn">Edit</a>
+        <form method="POST" action="{{ url_for('toggle_favorite', recipe_id=recipe.id) }}" style="display:inline;">
+            <button type="submit" class="action-btn favorite-btn">
+                {{ "★ Favorited" if recipe.is_favorite else "☆ Add to Favorites" }}
+            </button>
+        </form>
+        <form method="POST" action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}" style="display:inline;" onsubmit="return confirm('Delete this recipe?');">
+            <button type="submit" class="action-btn delete-action-btn">Delete</button>
+        </form>
+    </div>
 </div>
 
 <script>

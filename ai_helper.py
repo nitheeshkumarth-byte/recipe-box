@@ -61,3 +61,53 @@ def get_nutrition_estimate(ingredient_lines, servings):
         return json.loads(raw_text)
     except (json.JSONDecodeError, ValueError):
         return None
+
+
+def get_recipe_from_web(title):
+    """Ask Gemini to return a well-known online recipe for a dish title.
+    Returns a dict like:
+      {"title": "...", "servings": 4, "ingredients": [
+         {"amount": 2, "unit": "cups", "name": "rice"}, ...
+       ], "instructions": "...", "tags": ["dinner"]}
+    or None if the response couldn't be parsed."""
+
+    prompt = (
+        f"Find a well-known, genuine published recipe for the dish '{title}'. "
+        f"Use your knowledge of real online recipes.\n\n"
+        f"Respond with ONLY a JSON object, no other text, no markdown formatting, "
+        f"in exactly this shape:\n"
+        f'{{\n'
+        f'  "title": "<recipe title>",\n'
+        f'  "servings": <integer>,\n'
+        f'  "ingredients": [{{"amount": <number>, "unit": "<unit or empty string>", "name": "<ingredient>"}}],\n'
+        f'  "instructions": "<complete step-by-step instructions as a single string>",\n'
+        f'  "tags": ["<one or two relevant tags>"]\n'
+        f'}}\n\n'
+        f"Rules:\n"
+        f"- Use real ingredient quantities and units.\n"
+        f"- Amount can be 0 if there is no sensible numeric amount.\n"
+        f"- Keep tags short single words (e.g. dinner, dessert, quick).\n"
+        f"- Provide complete, usable cooking instructions."
+    )
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+
+    raw_text = response.text.strip()
+
+    if raw_text.startswith("```"):
+        raw_text = raw_text.strip("`")
+        raw_text = raw_text.replace("json", "", 1).strip()
+
+    try:
+        data = json.loads(raw_text)
+        data.setdefault("title", title)
+        data.setdefault("servings", 4)
+        data.setdefault("ingredients", [])
+        data.setdefault("instructions", "")
+        data.setdefault("tags", [])
+        return data
+    except (json.JSONDecodeError, ValueError):
+        return None

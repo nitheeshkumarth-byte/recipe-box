@@ -1,15 +1,17 @@
 # 🍲 Recipe Box
 
-A personal recipe manager built with Flask and SQLite. Store your recipes with photos, structured ingredients, and tags — plus a couple of AI-powered helpers (dish origin and nutrition estimates) powered by Google Gemini.
+A personal recipe manager built with Flask and SQLite. Store your recipes with photos, structured ingredients, and tags — plus AI-powered helpers (dish origin, nutrition estimates, and recipe auto-fill) powered by Google Gemini.
 
 ## Features
 
 - **Full recipe CRUD** — add, edit, view, and delete recipes
+- **✨ Recipe auto-fill** — on the Add page, enter a dish title and Gemini fetches a real published recipe, auto-filling servings, ingredients, instructions, and tags (skips titles already in your box)
 - **Photo uploads** — PNG / JPG / JPEG / GIF / WebP (max 5 MB)
-- **Structured ingredients** — parallel amount / unit / name rows
+- **Structured ingredients** — parallel amount / unit / name rows with an "Add ingredient" slot
 - **Servings scaler** — change the serving count on a recipe page and ingredient amounts (and nutrition) rescale client-side
-- **Search & filtering** — search by title, filter by tag, and bookmark favorites
-- **Rating** — 1–5 star ratings per recipe
+- **Search & filtering** — search by partial text across title, instructions, ingredients, and tags; filter by tag and bookmark favorites
+- **Filmstrip view** — browse recipes as a rolling filmstrip of flashcards (with photos, ratings, tag pills) or a list, with a toggle between them
+- **Rating** — compact single-star display with a 1–5 dropdown to rate
 - **Pagination** — 9 recipes per page
 - **✨ Dish origin** — one click asks Gemini for the cultural origin and history of a dish
 - **🥗 Nutrition estimates** — one click asks Gemini for per-serving calories / protein / carbs / fat
@@ -92,10 +94,11 @@ gunicorn app:app
 
 ## AI Features
 
-The two AI buttons on a recipe's detail page call the Gemini API:
+The AI features call the Gemini API:
 
-- **✨ Where does this dish come from?** — returns 3–4 sentences on the dish's likely cultural origin and history.
-- **🥗 Estimate nutrition** — returns a per-serving estimate for calories, protein, carbs, and fat based on the structured ingredient list.
+- **✨ Auto-fill recipe** (Add page) — type a dish title and Gemini returns a full published recipe (servings, ingredients, instructions, tags) that auto-fills the form. If the title is already in your box, it won't overwrite it.
+- **✨ Where does this dish come from?** (recipe detail) — returns 3–4 sentences on the dish's likely cultural origin and history.
+- **🥗 Estimate nutrition** (recipe detail) — returns a per-serving estimate for calories, protein, carbs, and fat based on the structured ingredient list.
 
 Results are saved to the recipe, so subsequent visits don't re-call the API. Nutrition is recomputed automatically when ingredients change on edit.
 
@@ -105,7 +108,7 @@ Results are saved to the recipe, so subsequent visits don't re-call the API. Nut
 recipie-box/
 ├── app.py                 # Flask app, routes, helpers, file uploads
 ├── model.py               # SQLAlchemy models (Recipe, Ingredient, Tag)
-├── ai_helper.py           # Gemini calls for origin & nutrition
+├── ai_helper.py           # Gemini calls: origin, nutrition, recipe auto-fill
 ├── requirements.txt
 ├── .env                   # secrets (gitignored)
 ├── static/
@@ -113,9 +116,9 @@ recipie-box/
 │   └── uploads/           # uploaded recipe photos (gitignored)
 ├── templates/
 │   ├── base.html
-│   ├── index.html         # recipe list / search / pagination
+│   ├── index.html         # recipe list / filmstrip + search / filtering
 │   ├── recipe.html        # recipe detail + AI features
-│   └── add.html           # add / edit form
+│   └── add.html           # add / edit form + auto-fill
 ├── migrations/            # Alembic migration scripts
 └── instance/              # SQLite database lives here
 ```

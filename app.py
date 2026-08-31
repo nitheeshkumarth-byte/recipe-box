@@ -3,8 +3,9 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
+from sqlalchemy import or_
 from model import db, Recipe, Tag, RecipeIngredient
-from ai_helper import get_recipe_origin, get_nutrition_estimate
+from ai_helper import get_recipe_origin, get_nutrition_estimate, get_recipe_from_web
 
 load_dotenv()
 
@@ -111,9 +112,20 @@ def home():
     query = Recipe.query
 
     if search:
-        query = query.filter(Recipe.title.ilike(f"%{search}%"))
+        pattern = f"%{search}%"
+        query = query.outerjoin(Recipe.tags).outerjoin(
+            Recipe.ingredient_lines
+        ).filter(or_(
+            Recipe.title.ilike(pattern),
+            Recipe.instructions.ilike(pattern),
+            Tag.name.ilike(pattern),
+            RecipeIngredient.name.ilike(pattern),
+        ))
+        if tag:
+            query = query.filter(Tag.name == tag)
+        query = query.distinct()
 
-    if tag:
+    elif tag:
         query = query.join(Recipe.tags).filter(Tag.name == tag)
 
     if favorites_only:
@@ -160,6 +172,34 @@ def add_recipe():
         return redirect(url_for("home"))
 
     return render_template("add.html", recipe=None)
+
+
+@app.route("/api/recipe/suggest", methods=["POST"])
+def api_recipe_suggest():
+    title = request.get_json(silent=True) or {}
+    title = (title.get("title") or "").strip()
+
+    if not title:
+        return jsonify({"success": False, "error": "Please enter a recipe title first."}), 400
+
+    existing = Recipe.query.filter(
+        Recipe.title.ilike(f"%{title}%")
+    ).first()
+
+    if existing is not None:
+        return jsonify({
+            "success": False,
+            "already_exists": True,
+            "title": existing.title,
+            "message": f'"{existing.title}" is already in your box.',
+        }), 409
+
+    result = get_recipe_from_web(title)
+
+    if result is None:
+        return jsonify({"success": False, "error": "Couldn't fetch a recipe right now. Try again later."}), 500
+
+    return jsonify({"success": True, "recipe": result})
 
 
 @app.route("/edit/<int:recipe_id>", methods=["GET", "POST"])

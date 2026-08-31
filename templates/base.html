@@ -13,8 +13,13 @@
 
 <body>
     <header>
-        <a href="{{ url_for('home') }}" class="logo">🍲 Recipe Box</a>
-        <a href="{{ url_for('add_recipe') }}" class="btn">+ Add Recipe</a>
+        <nav class="site-nav">
+            <a href="{{ url_for('home') }}" class="logo">🍲 Recipe Box</a>
+            <div class="nav-links">
+                <a href="{{ url_for('home', favorites='1') }}" class="nav-link">★ Favorites</a>
+                <a href="{{ url_for('add_recipe') }}" class="btn">+ Add Recipe</a>
+            </div>
+        </nav>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -43,7 +48,11 @@
                 });
 
                 if (response.ok) {
-                    document.getElementById(`recipe-${recipeId}`).remove();
+                    const el = document.getElementById(`recipe-${recipeId}`);
+                    if (el) el.remove();
+                    const listEl = document.getElementById(`recipe-list-${recipeId}`);
+                    if (listEl) listEl.remove();
+                    refreshFilmControls?.();
                 } else {
                     alert("Something went wrong deleting that recipe.");
                 }
