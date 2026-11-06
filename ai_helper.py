@@ -1,11 +1,57 @@
 import os
 import json
+import time
 from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+MODEL = "gemini-2.5-flash"
+
+TRANSIENT_STATUS_CODES = (429, 500, 503)
+
+
+def _generate(prompt):
+    """Call Gemini with retries for transient API errors."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return client.models.generate_content(
+                model=MODEL,
+                contents=prompt
+            )
+        except Exception as e:
+            last_error = e
+            status = getattr(e, "code", None)
+            if status not in TRANSIENT_STATUS_CODES:
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise last_error
+
+
+def _extract_json(raw_text):
+    """Try to pull a JSON object out of Gemini's text response."""
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        cleaned = cleaned.replace("json", "", 1).strip()
+
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end + 1])
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
 
 
 def get_recipe_origin(title):
@@ -17,11 +63,10 @@ def get_recipe_origin(title):
         f"honestly rather than inventing details."
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-
+    try:
+        response = _generate(prompt)
+    except Exception:
+        return "Unknown origin."
     return response.text
 
 
@@ -46,21 +91,12 @@ def get_nutrition_estimate(ingredient_lines, servings):
         f"estimate, use 0 for all values."
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-
-    raw_text = response.text.strip()
-
-    if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-        raw_text = raw_text.replace("json", "", 1).strip()
-
     try:
-        return json.loads(raw_text)
-    except (json.JSONDecodeError, ValueError):
+        response = _generate(prompt)
+    except Exception:
         return None
+
+    return _extract_json(response.text)
 
 
 def get_recipe_from_web(title):
@@ -90,24 +126,19 @@ def get_recipe_from_web(title):
         f"- Provide complete, usable cooking instructions."
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-
-    raw_text = response.text.strip()
-
-    if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-        raw_text = raw_text.replace("json", "", 1).strip()
-
     try:
-        data = json.loads(raw_text)
-        data.setdefault("title", title)
-        data.setdefault("servings", 4)
-        data.setdefault("ingredients", [])
-        data.setdefault("instructions", "")
-        data.setdefault("tags", [])
-        return data
-    except (json.JSONDecodeError, ValueError):
+        response = _generate(prompt)
+    except Exception:
         return None
+
+    data = _extract_json(response.text)
+
+    if data is None:
+        return None
+
+    data.setdefault("title", title)
+    data.setdefault("servings", 4)
+    data.setdefault("ingredients", [])
+    data.setdefault("instructions", "")
+    data.setdefault("tags", [])
+    return data

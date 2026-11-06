@@ -4,3 +4,4 @@ __pycache__/
 recipes.db
 .env
 static/uploads/
+.venv
