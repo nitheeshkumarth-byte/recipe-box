@@ -5,3 +5,4 @@ gunicorn
 google-genai
 Flask-Migrate
 uvicorn
+psycopg2-binary
