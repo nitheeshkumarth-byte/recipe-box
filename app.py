@@ -10,7 +10,12 @@ from ai_helper import get_recipe_origin, get_nutrition_estimate, get_recipe_from
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///recipes.db"
+database_url = os.environ.get("DATABASE_URL")
+
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///recipes.db"
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-fallback-key-change-me")
 
 UPLOAD_FOLDER = os.path.join("static", "uploads")
