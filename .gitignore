@@ -1,8 +1,28 @@
-venv/
-__pycache__/
-*.pyc
-recipes.db
-.env
-static/uploads/
-.venv
+# Node dependencies
 node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Environment variables
+.env
+.env.*
+
+# Database files
+instance/*.db
+instance/*.sqlite
+instance/*.sqlite3
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Build files
+dist/
+build/
