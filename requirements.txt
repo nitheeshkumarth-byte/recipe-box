@@ -5,8 +5,4 @@ gunicorn
 google-genai
 Flask-Migrate
 uvicorn
-<<<<<<< HEAD
 psycopg2-binary
-=======
-psycopg2-binary
->>>>>>> c5dd632 (after migration)

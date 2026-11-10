@@ -26,3 +26,7 @@ instance/*.sqlite3
 # Build files
 dist/
 build/
+
+node_modules/
+.env
+__pycache__/
