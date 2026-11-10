@@ -5,3 +5,4 @@ recipes.db
 .env
 static/uploads/
 .venv
+node_modules/
