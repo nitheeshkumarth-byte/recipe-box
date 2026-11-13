@@ -5,7 +5,7 @@
 <a href="{{ url_for('home') }}" class="back-link">&larr; Back to all recipes</a>
 
 {% if recipe.image_filename %}
-<img src="{{ url_for('static', filename='uploads/' ~ recipe.image_filename) }}" alt="{{ recipe.title }}"
+<img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}"
     class="recipe-photo">
 {% endif %}
 

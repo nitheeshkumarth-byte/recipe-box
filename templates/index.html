@@ -38,7 +38,7 @@
 		<a class="flashcard" id="recipe-{{ recipe.id }}" href="{{ url_for('view_recipe', recipe_id=recipe.id) }}">
 			<div class="flashcard-media">
 				{% if recipe.image_filename %}
-				<img src="{{ url_for('static', filename='uploads/' ~ recipe.image_filename) }}" alt="{{ recipe.title }}">
+				<img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}">
 				{% else %}
 				<div class="flashcard-placeholder">🍽️</div>
 				{% endif %}
