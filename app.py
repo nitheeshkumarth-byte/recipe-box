@@ -1,4 +1,6 @@
 import os
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_migrate import Migrate
@@ -18,14 +20,21 @@ else:
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///recipes.db"
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-fallback-key-change-me")
 
-UPLOAD_FOLDER = os.path.join("static", "uploads")
+# Photos live in Supabase Storage (S3-compatible); Render's disk is wiped on deploy.
+S3_BUCKET = os.environ.get("S3_BUCKET", "uploads")
+S3_PREFIX = os.environ.get("S3_PREFIX", "")  # e.g. "uploads/" if photos sit in a folder
+IMAGE_BASE_URL = os.environ.get("IMAGE_BASE_URL", "").rstrip("/")
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ.get("S3_ENDPOINT"),
+    region_name=os.environ.get("S3_REGION"),
+    aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
+    aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
+)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
-
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 db.init_app(app)
 migrate = Migrate(app, db)
@@ -53,23 +62,31 @@ def save_uploaded_image(file):
     filename = secure_filename(file.filename)
     unique_filename = f"{os.urandom(8).hex()}_{filename}"
 
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
-    file.save(filepath)
+    try:
+        s3.upload_fileobj(
+            file, S3_BUCKET, S3_PREFIX + unique_filename,
+            ExtraArgs={"ContentType": file.mimetype or "application/octet-stream"},
+        )
+    except (BotoCoreError, ClientError):
+        flash("Could not upload the image. Please try again.", "error")
+        return "INVALID"
 
     return unique_filename
 
 
 def delete_image_file(filename):
-    """Deletes an uploaded image from disk, ignoring missing files."""
+    """Deletes an uploaded image from storage, ignoring failures."""
     if not filename:
         return
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    if os.path.exists(filepath):
-        try:
-            os.remove(filepath)
-        except OSError:
-            pass
+    try:
+        s3.delete_object(Bucket=S3_BUCKET, Key=S3_PREFIX + filename)
+    except (BotoCoreError, ClientError):
+        pass
 
+
+@app.context_processor
+def image_helpers():
+    return {"image_url": lambda filename: f"{IMAGE_BASE_URL}/{S3_PREFIX}{filename}"}
 
 def get_or_create_tags(tag_string):
     """Takes 'dinner, quick, veg' and returns a list of Tag objects,

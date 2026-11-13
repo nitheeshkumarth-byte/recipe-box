@@ -43,7 +43,7 @@
                         <span class="file-name" id="file-name"></span>
                     </label>
                     {% if recipe and recipe.image_filename %}
-                    <img src="{{ url_for('static', filename='uploads/' ~ recipe.image_filename) }}" alt="{{ recipe.title }}" class="form-photo-preview">
+                    <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}" class="form-photo-preview">
                     <p class="hint">Uploading a new photo will replace this one.</p>
                     {% endif %}
                 </div>
