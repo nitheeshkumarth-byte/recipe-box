@@ -17,6 +17,7 @@
             <a href="{{ url_for('home') }}" class="logo">🍲 Recipe Box</a>
             <div class="nav-links">
                 <a href="{{ url_for('home', favorites='1') }}" class="nav-link">★ Favorites</a>
+                <a href="{{ url_for('swagger_bp.swagger_ui') }}" class="nav-link" target="_blank">⚡ API Docs</a>
                 <a href="{{ url_for('add_recipe') }}" class="btn">+ Add Recipe</a>
             </div>
         </nav>

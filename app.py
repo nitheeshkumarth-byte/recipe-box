@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 from model import db, Recipe, Tag, RecipeIngredient
 from ai_helper import get_recipe_origin, get_nutrition_estimate, get_recipe_from_web
+from swagger_docs import swagger_bp
 
 load_dotenv()
 
@@ -15,6 +16,8 @@ app = Flask(__name__)
 database_url = os.environ.get("DATABASE_URL")
 
 if database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///recipes.db"
@@ -38,6 +41,7 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
 db.init_app(app)
 migrate = Migrate(app, db)
+app.register_blueprint(swagger_bp)
 
 RECIPES_PER_PAGE = 9
 
