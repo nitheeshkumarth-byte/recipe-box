@@ -569,3 +569,4 @@ def swagger_json():
 def swagger_ui():
     """Renders the interactive Swagger UI."""
     return render_template_string(SWAGGER_HTML_TEMPLATE, spec_url="/swagger.json")
+
