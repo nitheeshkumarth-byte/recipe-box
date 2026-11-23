@@ -10,7 +10,7 @@ import time
 from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from botocore.exceptions import ClientError
 from flask import Flask
@@ -178,13 +178,26 @@ class RecipeBoxTests(unittest.TestCase):
             storage.delete_object.assert_called_once_with(Bucket="uploads", Key=key)
 
     def test_bundled_photo_takes_precedence_over_cloud_storage(self):
-        filename = "4f4dbc51ebf90adb_images.webp"
-        with patch.multiple(recipe_box, S3_ENDPOINT="https://storage.example.invalid",
-                            IMAGE_BASE_URL="https://images.example.invalid/uploads"):
-            with patch.object(recipe_box, "storage_client") as storage:
-                with self.client.get(f"/photos/{filename}") as photo:
-                    self.assertEqual(photo.status_code, 200)
-                    self.assertEqual(photo.mimetype, "image/webp")
+        from PIL import Image
+
+        filename = "legacy-photo.webp"
+        with tempfile.TemporaryDirectory() as folder:
+            static_dir = Path(folder) / "static"
+            uploads = static_dir / "uploads"
+            uploads.mkdir(parents=True)
+            Image.new("RGB", (1, 1)).save(uploads / filename)
+            with (
+                patch.object(Flask, "static_folder", new_callable=PropertyMock, return_value=str(static_dir)),
+                patch.multiple(
+                    recipe_box, LOCAL_UPLOADS=Path(folder) / "instance" / "uploads",
+                    S3_ENDPOINT="https://storage.example.invalid",
+                    IMAGE_BASE_URL="https://images.example.invalid/uploads",
+                ),
+                patch.object(recipe_box, "storage_client") as storage,
+                self.client.get(f"/photos/{filename}") as photo,
+            ):
+                self.assertEqual(photo.status_code, 200)
+                self.assertEqual(photo.mimetype, "image/webp")
                 storage.assert_not_called()
 
     def test_public_photo_url_is_a_fallback_for_existing_recipes(self):
@@ -331,15 +344,20 @@ class RecipeBoxTests(unittest.TestCase):
                 self.assertNotIn("123", reply)
 
     def test_accounts_isolate_recipes_and_photos(self):
-        with patch.dict(recipe_box.app.config, {"ACCOUNT_AUTH": True}):
+        photo_bytes = b"\x89PNG\r\n\x1a\nimage signature fixture"
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(recipe_box, "LOCAL_UPLOADS", Path(folder)),
+            patch.dict(recipe_box.app.config, {"ACCOUNT_AUTH": True}),
+        ):
             self.assertEqual(self.client.get("/").status_code, 302)
             self.assertEqual(self.client.post("/api/chef-chat", json={"question": "Themes?"}).status_code, 401)
             with self.client.session_transaction() as session:
                 session.update(recipe_account_id=OWNER, recipe_account_exp=int(time.time()) + 300)
-            self.assertEqual(self.submit("/add", title="Owner's stew").status_code, 302)
+            self.assertEqual(self.submit(
+                "/add", title="Owner's stew", image=(BytesIO(photo_bytes), "owner-photo.png"),
+            ).status_code, 302)
             recipe = Recipe.query.one()
-            recipe.image_filename = "4f4dbc51ebf90adb_images.webp"
-            db.session.commit()
             own_id = recipe.id
             self.assertEqual(recipe.owner_id, OWNER)
             self.assertEqual(self.client.post(f"/favorite/{own_id}", headers=self.headers).status_code, 302)
@@ -347,6 +365,7 @@ class RecipeBoxTests(unittest.TestCase):
             with self.client.get(f"/photos/{recipe.image_filename}") as photo:
                 self.assertEqual(photo.status_code, 200)
                 self.assertTrue(photo.cache_control.no_store)
+                self.assertEqual(photo.data, photo_bytes)
             self.assertEqual(
                 [row.action for row in AuditEvent.query.order_by(AuditEvent.id)], ["create", "favorite"],
             )
