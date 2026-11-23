@@ -102,6 +102,31 @@ class RecipeBoxTests(unittest.TestCase):
         self.assertEqual(len(Recipe.query.one().tags), 2)
         self.assertIn(b"Rice Bowl", self.client.get("/?q=vegan&tag=quick").data)
 
+    def test_split_frontend_recipe_api_reuses_session_and_owner_boundary(self):
+        with patch.dict(recipe_box.app.config, {"ACCOUNT_AUTH": True}):
+            self.assertEqual(self.client.get("/api/session").status_code, 401)
+            with self.client.session_transaction() as session:
+                session.update(recipe_account_id=OWNER, recipe_account_exp=time.time() + 300)
+            session_response = self.client.get("/api/session")
+            self.assertTrue(session_response.cache_control.no_store)
+            headers = {"X-CSRF-Token": session_response.json["csrf_token"]}
+            form = {"title": "Test rice", "instructions": "Cook.", "servings": "4"}
+            self.assertEqual(self.client.post("/api/recipes", data=form).status_code, 400)
+            created = self.client.post("/api/recipes", data=form, headers=headers)
+            self.assertEqual(created.status_code, 201)
+            path = f"/api/recipes/{created.json['id']}"
+            self.assertEqual(self.client.get(path).json["title"], "Test rice")
+            self.assertEqual(self.client.get("/api/recipes?q=rice").json["total"], 1)
+            form["title"] = "Updated rice"
+            self.assertEqual(self.client.patch(path, data=form, headers=headers).status_code, 200)
+            self.assertTrue(self.client.post(f"{path}/favorite", headers=headers).json["favorite"])
+            self.assertEqual(self.client.post(f"{path}/rating", data={"rating": "4"}, headers=headers).json["rating"], 4)
+            with self.client.session_transaction() as session:
+                session["recipe_account_id"] = OTHER
+            self.assertEqual(self.client.get(path).status_code, 404)
+            self.assertEqual(self.client.patch(path, data=form, headers=headers).status_code, 404)
+            self.assertEqual(self.client.get("/api/recipes").json["total"], 0)
+
     def test_rejected_form_preserves_data(self):
         response = self.submit("/add", ing_amount="one")
         self.assertEqual(response.status_code, 400)

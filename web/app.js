@@ -1,0 +1,55 @@
+import '../static/style.css';
+import '../static/chef-chat.css';
+import '../static/theme.js';
+import '../static/install.js';
+import { api } from './api.js';
+import { renderCollection } from './collection.js';
+import { renderEditor, renderRecipe } from './recipe.js';
+
+const content = document.getElementById('content');
+
+window.addEventListener('error', event => {
+    if (!(event.target instanceof HTMLImageElement) || !event.target.hasAttribute('data-recipe-photo')) return;
+    event.target.hidden = true;
+    event.target.nextElementSibling.hidden = false;
+}, true);
+
+async function start() {
+    try {
+        const session = await api('/api/session');
+        window.csrfHeaders = { 'X-CSRF-Token': session.csrf_token };
+        document.getElementById('favorites-link').hidden = false;
+        document.getElementById('add-link').hidden = false;
+        const signOut = document.querySelector('.nav-signout');
+        signOut.hidden = !session.signed_in;
+        signOut.elements.csrf_token.value = session.csrf_token;
+
+        const path = location.pathname.replace(/\/$/, '') || '/';
+        const detail = path.match(/^\/(recipe|edit)\/(\d+)$/);
+        if (detail) {
+            const recipe = await api(`/api/recipes/${detail[2]}`);
+            if (detail[1] === 'edit') renderEditor(content, recipe);
+            else renderRecipe(content, recipe);
+        } else if (path === '/add') {
+            renderEditor(content);
+        } else if (path === '/') {
+            await renderCollection(content);
+        } else {
+            throw new Error('This page could not be found.');
+        }
+        await import('../static/chef-chat.js');
+    } catch (error) {
+        const message = document.createElement('p');
+        message.setAttribute('role', 'alert');
+        message.textContent = error.message;
+        content.replaceChildren(message);
+        const link = document.createElement('a');
+        link.href = error.status === 401 ? '/auth/sign-in' : '/';
+        link.textContent = error.status === 401 ? 'Sign in' : 'Go to your recipe box';
+        content.append(link);
+    } finally {
+        content.setAttribute('aria-busy', 'false');
+    }
+}
+
+start();

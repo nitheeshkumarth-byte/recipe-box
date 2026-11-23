@@ -378,11 +378,13 @@ def get_or_create_tags(names):
     return [tags[name] for name in names]
 
 
-def save_recipe(recipe=None):
+def save_recipe(recipe=None, *, api=False):
     form = read_recipe_form(recipe)
     try:
         servings, names, ingredients = validate_recipe_form(form)
     except ValueError as error:
+        if api:
+            return jsonify(success=False, error=str(error)), 400
         flash(str(error), "error")
         return render_template("add.html", recipe=recipe, form=form), 400
 
@@ -420,12 +422,16 @@ def save_recipe(recipe=None):
     except ValueError as error:
         db.session.rollback()
         delete_image_file(new_image)
+        if api:
+            return jsonify(success=False, error=str(error)), 400
         flash(str(error), "error")
         return render_template("add.html", recipe=recipe, form=form), 400
     except (SQLAlchemyError, BotoCoreError, ClientError, Boto3Error, OSError):
         db.session.rollback()
         delete_image_file(new_image)
         app.logger.exception("Failed to save recipe")
+        if api:
+            return jsonify(success=False, error="Could not save the recipe. Please try again."), 503
         flash("Could not save the recipe. Please try again.", "error")
         return render_template("add.html", recipe=recipe, form=form), 503
 
@@ -438,6 +444,8 @@ def save_recipe(recipe=None):
                 photo_thumbnail.apply_async(args=[saved.id, new_image, saved.owner_id], retry=False, expires=3600)
             except OperationalError:
                 app.logger.warning("Thumbnail queue unavailable. Original stays available.")
+    if api:
+        return jsonify(success=True, id=saved.id), 200 if recipe else 201
     flash(f'"{saved.title}" was {"updated" if recipe else "added"}!', "success")
     if recipe:
         return redirect(url_for("view_recipe", recipe_id=saved.id))
@@ -462,7 +470,9 @@ def ready():
 
 @app.after_request
 def protect_private_responses(response):
-    if g.get("recipe_user_id") and request.endpoint != "static":
+    if request.path.startswith(("/api/", "/auth/", "/photos/")) or (
+        g.get("recipe_user_id") and request.endpoint != "static"
+    ):
         response.cache_control.private = True
         response.cache_control.no_store = True
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -482,10 +492,18 @@ def rate_limit_ai():
 
 @app.route("/")
 def home():
+    pagination, search, tag, favorites_only = recipe_collection()
+    return render_template(
+        "index.html", recipes=pagination.items, pagination=pagination,
+        search=search, tag=tag, favorites_only=favorites_only,
+    )
+
+
+def recipe_collection():
     search = request.args.get("q", "").strip()
     tag = request.args.get("tag", "").strip()
     favorites_only = request.args.get("favorites") == "1"
-    page = request.args.get("page", 1, type=int)
+    page = min(max(request.args.get("page", 1, type=int), 1), 2_147_483_647 // RECIPES_PER_PAGE)
 
     query = recipe_query()
 
@@ -507,14 +525,46 @@ def home():
         page=page, per_page=RECIPES_PER_PAGE, error_out=False
     )
 
-    return render_template(
-        "index.html",
-        recipes=pagination.items,
-        pagination=pagination,
-        search=search,
-        tag=tag,
-        favorites_only=favorites_only,
+    return pagination, search, tag, favorites_only
+
+
+def recipe_payload(recipe, *, detail=False):
+    data = dict(
+        id=recipe.id, title=recipe.title, servings=recipe.servings,
+        rating=recipe.rating, favorite=recipe.is_favorite, tags=[tag.name for tag in recipe.tags],
+        photo=image_url(recipe.image_filename, thumbnail=not detail) if recipe.image_filename else None,
     )
+    if detail:
+        data.update(
+            instructions=recipe.instructions, origin=recipe.origin,
+            ingredients=[dict(amount=row.amount, unit=row.unit, name=row.name) for row in recipe.ingredient_lines],
+            nutrition=dict(calories=recipe.calories, protein_g=recipe.protein_g, carbs_g=recipe.carbs_g, fat_g=recipe.fat_g),
+        )
+    return data
+
+
+@app.get("/api/session")
+def api_session():
+    return jsonify(csrf_token=csrf_token(), signed_in=bool(g.get("recipe_user_id")))
+
+
+@app.route("/api/recipes", methods=["GET", "POST"])
+def api_recipes():
+    if request.method == "POST":
+        return save_recipe(api=True)
+    pagination, _, _, _ = recipe_collection()
+    return jsonify(recipes=[recipe_payload(recipe) for recipe in pagination.items],
+                   page=pagination.page, pages=pagination.pages, total=pagination.total)
+
+
+@app.route("/api/recipes/<int:recipe_id>", methods=["GET", "PATCH"])
+def api_recipe(recipe_id):
+    recipe = recipe_query().filter_by(id=recipe_id).first()
+    if recipe is None:
+        return jsonify(success=False, error="Recipe not found."), 404
+    if request.method == "PATCH":
+        return save_recipe(recipe, api=True)
+    return jsonify(recipe_payload(recipe, detail=True))
 
 
 @app.route("/recipe/<int:recipe_id>")
@@ -638,12 +688,15 @@ def api_delete_recipe(recipe_id):
     return jsonify({"success": True, "id": recipe_id})
 
 
+@app.post("/api/recipes/<int:recipe_id>/favorite")
 @app.route("/favorite/<int:recipe_id>", methods=["POST"])
 def toggle_favorite(recipe_id):
     recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
     recipe.is_favorite = not recipe.is_favorite
     audit(recipe, "favorite")
     db.session.commit()
+    if request.path.startswith("/api/"):
+        return jsonify(success=True, favorite=recipe.is_favorite)
     flash(
         f'"{recipe.title}" {"added to" if recipe.is_favorite else "removed from"} favorites.',
         "success"
@@ -651,6 +704,7 @@ def toggle_favorite(recipe_id):
     return redirect(url_for("view_recipe", recipe_id=recipe.id))
 
 
+@app.post("/api/recipes/<int:recipe_id>/rating")
 @app.route("/rate/<int:recipe_id>", methods=["POST"])
 def rate_recipe(recipe_id):
     recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
@@ -658,12 +712,16 @@ def rate_recipe(recipe_id):
     rating = request.form.get("rating", type=int)
 
     if rating is None or not (1 <= rating <= 5):
+        if request.path.startswith("/api/"):
+            return jsonify(success=False, error="Rating must be between 1 and 5."), 400
         flash("Rating must be between 1 and 5.", "error")
         return redirect(url_for("view_recipe", recipe_id=recipe.id))
 
     recipe.rating = rating
     audit(recipe, "rate")
     db.session.commit()
+    if request.path.startswith("/api/"):
+        return jsonify(success=True, rating=recipe.rating)
     flash(f'Rated "{recipe.title}" {rating} stars.', "success")
     return redirect(url_for("view_recipe", recipe_id=recipe.id))
 

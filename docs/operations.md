@@ -18,6 +18,14 @@ Use separate Redis URLs for cache and queue. When no queue is configured, the or
 
 For optional hybrid retrieval, set `CHEF_HYBRID_SEARCH=1`, `CHEF_RAG_PROVIDER=gemini`, and `GEMINI_API_KEY`. Run `flask --app app rebuild-chef-index` as the schema owner with pgvector installed in the `extensions` schema. Rebuild after source or embedding-model changes. This opt-in mode sends vetted passages and filtered questions to Gemini. Local-only mode sends neither.
 
+## Vercel frontend
+
+Import the repository into Vercel with the repository root and the **Other** preset. The root `vercel.mjs` builds `web/` and routes API, auth, private media and PWA requests to the HTTPS origin in `RECIPE_BOX_BACKEND`. Set this public origin per Vercel environment. Preview and production should use separate backends and databases once staging is provisioned. All database and storage credentials stay on Render.
+
+To develop locally, run `python app.py` and then `npm ci --prefix web` and `npm run --prefix web dev` in another shell. Set `RECIPE_BOX_BACKEND` before starting Vite if Flask is on an alternate port. Run `python -m tests.split_browser_smoke` with Playwright Chromium installed to check the frontend and proxy together.
+
+Keep the production apex on Render until the Vercel preview passes sign-in, recipe, upload and offline checks. Verify `api.jobscope.eu` on Render, then proxy that record in Cloudflare. Set `RECIPE_BOX_BACKEND=https://api.jobscope.eu` and redeploy Vercel before moving the apex to Vercel. Using the apex itself as Vercel's backend after cutover would create a routing loop. Bypass shared caching for authenticated pages, API responses, and private photos. Keep the previous DNS target for rollback.
+
 ## Backup and restore drill
 
 Configure Supabase database backups and point-in-time recovery to match your recovery target. Copy Storage objects to a separate protected backup location on a matching schedule. Database backups contain photo references, while Storage copies contain the files.

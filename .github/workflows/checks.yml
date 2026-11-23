@@ -33,7 +33,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: pip install -r requirements.txt playwright
+      - run: npm ci --prefix web
+      - run: npm run --prefix web build
       - run: python -m unittest discover -s tests -v
       - run: python -m tests.postgres_smoke
       - run: python -m tests.vector_smoke
@@ -42,6 +49,7 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379/15
       - run: playwright install --with-deps chromium
       - run: python -m tests.browser_smoke
+      - run: python -m tests.split_browser_smoke
       - name: Restore database into an empty CI database
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

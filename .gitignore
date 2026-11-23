@@ -1,6 +1,7 @@
 # Node dependencies and build output
 node_modules/
 .expo/
+.vercel/
 dist-android/
 dist-ios/
 dist/

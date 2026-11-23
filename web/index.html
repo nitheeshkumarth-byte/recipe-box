@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-palette="sage">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#304d3b">
+    <meta name="recipe-service-worker" content="/service-worker.js">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/icons/recipe-box-192.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&amp;family=Work+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+    <title>Recipe Box</title>
+    <script type="module" src="/app.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="site-nav" aria-label="Main navigation">
+            <a class="logo" href="/">🍲 Recipe Box</a>
+            <div class="nav-links">
+                <a href="/?favorites=1" class="nav-link" id="favorites-link" hidden>★ Favorites</a>
+                <div class="theme-picker" hidden>
+                    <button type="button" id="theme-toggle" class="theme-toggle" aria-expanded="false" aria-controls="theme-palettes">Theme</button>
+                    <div id="theme-palettes" class="theme-palettes" role="group" aria-label="Color palette" hidden>
+                        <button type="button" class="theme-option" data-theme-choice="sage"><span class="theme-swatch" data-palette="sage" aria-hidden="true"></span>Sage</button>
+                        <button type="button" class="theme-option" data-theme-choice="ocean"><span class="theme-swatch" data-palette="ocean" aria-hidden="true"></span>Ocean Blue</button>
+                        <button type="button" class="theme-option" data-theme-choice="lavender"><span class="theme-swatch" data-palette="lavender" aria-hidden="true"></span>Lavender</button>
+                        <button type="button" class="theme-option" data-theme-choice="terracotta"><span class="theme-swatch" data-palette="terracotta" aria-hidden="true"></span>Terracotta</button>
+                        <button type="button" class="theme-option" data-theme-choice="midnight"><span class="theme-swatch" data-palette="midnight" aria-hidden="true"></span>Midnight Dark</button>
+                    </div>
+                </div>
+                <a href="/add" class="btn" id="add-link" hidden>+ Add Recipe</a>
+                <form action="/auth/sign-out" method="post" class="nav-signout" hidden>
+                    <input name="csrf_token" type="hidden">
+                    <button class="nav-link" type="submit">Sign out</button>
+                </form>
+            </div>
+        </nav>
+    </header>
+    <main id="content" aria-busy="true"><p role="status">Loading recipes…</p></main>
+    <noscript><p>Recipe Box requires JavaScript in this browser.</p></noscript>
+
+    <div class="chef-chat" id="chef-chat" hidden data-chat-url="/api/chef-chat">
+        <button type="button" class="chef-launcher" aria-label="Open Recipe Box help" aria-haspopup="dialog" aria-controls="chef-panel" aria-expanded="false">
+            <span class="chef-mascot" aria-hidden="true"><span class="chef-coat"></span><span class="chef-hand"></span><span class="chef-face"><span class="chef-eyes"></span><span class="chef-smile"></span></span><span class="chef-hat"></span></span>
+        </button>
+        <section class="chef-panel" id="chef-panel" role="dialog" aria-labelledby="chef-heading" hidden>
+            <header class="chef-panel-header"><h2 id="chef-heading">Recipe Box help</h2><button type="button" class="chef-close" aria-label="Close help">&times;</button></header>
+            <div class="chef-transcript" role="log" aria-label="Chat messages" tabindex="0"><p class="chef-message chef-reply">Hi! Ask about your recipes, or tell me how many servings you’re making.</p></div>
+            <div class="chef-questions" role="group" aria-label="Frequently asked questions">
+                <button type="button" data-question="How many recipes do I have?">Count my recipes</button>
+                <button type="button" data-question="Show my favorite recipes">My favorites</button>
+                <button type="button" data-question="How do I upload a photo?">Upload a photo</button>
+            </div>
+            <form class="chef-form">
+                <label class="visually-hidden" for="chef-question">Ask about your recipes or Recipe Box</label>
+                <input id="chef-question" name="question" type="text" maxlength="400" placeholder="Ask about Recipe Box…" enterkeyhint="send" autocomplete="off" required>
+                <button type="submit">Send</button>
+            </form>
+        </section>
+    </div>
+</body>
+</html>
