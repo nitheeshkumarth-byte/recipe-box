@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import hmac
 import math
 import os
@@ -132,7 +133,7 @@ def editor_signed_in():
 
 @app.before_request
 def protect_recipe_box():
-    if request.endpoint in {"health", "ready", "pwa.manifest", "pwa.service_worker", "pwa.offline"}:
+    if request.endpoint in {"health", "ready", "site_styles", "pwa.manifest", "pwa.service_worker", "pwa.offline"}:
         return None
     if request.endpoint == "static" and not request.view_args["filename"].startswith("uploads/"):
         return None
@@ -191,9 +192,29 @@ def thumbnail_name(filename):
     return f"thumbs/{filename}.webp"
 
 
+@lru_cache(maxsize=1)
+def stylesheet_revision(stylesheet, modified_ns):
+    return hashlib.sha256(stylesheet.read_bytes()).hexdigest()[:16]
+
+
+def current_stylesheet_revision():
+    stylesheet = Path(app.static_folder) / "style.css"
+    return stylesheet_revision(stylesheet, stylesheet.stat().st_mtime_ns)
+
+
+@app.get("/static/release/<revision>/style.css")
+def site_styles(revision):
+    if revision != current_stylesheet_revision():
+        abort(404)
+    response = send_from_directory(app.static_folder, "style.css", max_age=31_536_000)
+    response.cache_control.immutable = True
+    return response
+
+
 @app.context_processor
 def template_helpers():
     return {"image_url": image_url, "csrf_token": csrf_token,
+            "site_styles_url": lambda: url_for("site_styles", revision=current_stylesheet_revision()),
             "editor_available": bool(editor_password()), "editor_access": editor_signed_in()}
 
 
@@ -499,7 +520,7 @@ def ready():
 @app.after_request
 def protect_private_responses(response):
     if request.path.startswith(("/api/", "/auth/", "/photos/")) or (
-        request.endpoint != "static" and (g.get("recipe_user_id") or editor_signed_in())
+        request.endpoint not in {"static", "site_styles"} and (g.get("recipe_user_id") or editor_signed_in())
     ):
         response.cache_control.private = True
         response.cache_control.no_store = True

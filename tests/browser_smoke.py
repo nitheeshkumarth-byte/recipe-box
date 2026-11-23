@@ -24,10 +24,23 @@ try:
         browser = playwright.chromium.launch()
         context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
         page = context.new_page()
+        # A browser with the old unversioned CSS must request the current stylesheet instead.
+        page.route("**/static/style.css", lambda route: route.fulfill(
+            content_type="text/css", body=".collection-hero { display: flex; }"
+        ))
         page.goto(url)
+        stylesheet = page.locator('link[href*="/static/release/"]').get_attribute("href")
+        css_response = page.request.get(url + stylesheet)
+        assert css_response.ok and "immutable" in css_response.headers["cache-control"]
         assert "recipe-box-hero-mobile.webp" in page.locator(".collection-photo img").evaluate(
             "image => image.decode().then(() => image.currentSrc)"
         )
+        hero = page.locator(".collection-hero").bounding_box()
+        photo = page.locator(".collection-photo").bounding_box()
+        search = page.get_by_role("searchbox", name="Search recipes").bounding_box()
+        assert abs(photo["width"] - hero["width"]) < 1
+        assert abs(photo["height"] - hero["height"]) < 1
+        assert hero["x"] < search["x"] < search["x"] + search["width"] < hero["x"] + hero["width"]
         page.get_by_role("link", name="Add Recipe").click()
         page.get_by_label("Title").fill("Weeknight rice")
         page.get_by_label("Step by step").fill("Cook the rice.")
