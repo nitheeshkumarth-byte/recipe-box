@@ -65,7 +65,14 @@ try:
                     assert page.get_by_role("searchbox", name="Search recipes").is_visible()
                     page.unroute("**/api/session")
                     page.reload()
+                    assert page.request.get(url + "/apidocs").ok
                     page.get_by_role("link", name="Add Recipe").click()
+                    page.locator(".recipe-form .form-card").first.wait_for()
+                    assert page.locator(".recipe-form .form-card").count() == 2
+                    assert page.locator(".ingredient-row").evaluate("row => getComputedStyle(row).display") == "grid"
+                    page.get_by_role("button", name="Add ingredient").click()
+                    assert page.locator(".ingredient-row").count() == 2
+                    page.get_by_role("button", name="Remove ingredient").last.click()
                     page.get_by_label("Title").fill("Weeknight rice")
                     page.get_by_label("Step by step").fill("Cook the rice.")
                     page.get_by_label("Ingredient name").fill("Rice")
@@ -77,6 +84,11 @@ try:
                     page.get_by_role("button", name="Save Recipe").click()
                     page.get_by_role("heading", name="Weeknight rice").wait_for()
                     assert page.locator(".recipe-photo").evaluate("image => image.decode().then(() => image.naturalWidth)") == 20
+                    assert page.locator(".actions-bar .action-btn").count() == 3
+                    assert page.locator("#ingredient-list .ing-name").inner_text() == "Rice"
+                    page.get_by_label("Rate:").select_option("4")
+                    page.get_by_role("button", name="Rate", exact=True).click()
+                    page.get_by_text("4 / 5", exact=True).wait_for()
                     page.get_by_role("button", name="Add to Favorites").click()
                     page.get_by_role("button", name="Remove from Favorites").wait_for()
                     page.get_by_role("button", name="Theme").click()
@@ -87,11 +99,16 @@ try:
                     page.get_by_text("4 cups Rice", exact=False).wait_for()
                     page.get_by_role("button", name="Close help").click()
                     page.get_by_role("link", name="Edit", exact=True).click()
+                    page.locator(".form-photo-preview").wait_for()
                     page.get_by_label("Title").fill("Updated rice")
-                    page.get_by_role("button", name="Save Recipe").click()
+                    page.get_by_role("button", name="Save Changes").click()
                     page.get_by_role("heading", name="Updated rice").wait_for()
                     page.get_by_role("link", name="Back to all recipes").click()
                     page.locator("#recipe-deck .flashcard[data-depth='0']").wait_for()
+                    page.get_by_role("button", name="List", exact=True).click()
+                    assert page.get_by_role("button", name="Delete Updated rice").is_visible()
+                    assert page.locator("#recipe-list .mini-rating").count() == 1
+                    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                     assert page.request.get(url + "/manifest.webmanifest").json()["display"] == "standalone"
                     page.evaluate("navigator.serviceWorker.ready")
                     page.reload()

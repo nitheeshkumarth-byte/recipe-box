@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const backend = process.env.RECIPE_BOX_BACKEND || 'http://127.0.0.1:5000';
 const backendPaths = [
     '^/(?:api|auth|photos|static)(?:/|$)',
-    '^/(?:manifest\\.webmanifest|service-worker\\.js|offline)(?:\\?|$)',
+    '^/(?:apidocs|swagger\\.json|manifest\\.webmanifest|service-worker\\.js|offline)(?:\\?|$)',
 ];
 
 export default defineConfig({

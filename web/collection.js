@@ -37,20 +37,40 @@ export async function renderCollection(results) {
     const { recipes, page, pages, total } = await api(`/api/recipes?${params}`);
     const favorites = params.get('favorites') === '1';
     const tag = params.get('tag');
+    const filtered = Boolean(params.get('q') || favorites || tag);
     results.innerHTML = `
-        <div class="filter-bar">
-            <a class="filter-pill${favorites ? '' : ' active'}" href="${escape(collectionLink(params, { favorites: '', page: '' }))}">All</a>
+        ${filtered ? `<div class="filter-bar">
             <a class="filter-pill${favorites ? ' active' : ''}" href="${escape(collectionLink(params, { favorites: '1', page: '' }))}">★ Favorites</a>
+            <a class="filter-pill${favorites ? '' : ' active'}" href="${escape(collectionLink(params, { favorites: '', page: '' }))}">All</a>
             ${tag ? `<a class="filter-tag" href="${escape(collectionLink(params, { tag: '', page: '' }))}">${escape(tag)} &times;</a>` : ''}
+            <a href="/" class="filter-clear">&times; Clear</a>
             <span class="filter-count">${total} ${total === 1 ? 'recipe' : 'recipes'}</span>
-        </div>
-        ${recipes.length ? deckMarkup(recipes, params) : '<div class="empty-collection"><p>No recipes match this view.</p><a href="/">Browse all recipes</a></div>'}
+        </div>` : ''}
+        ${recipes.length ? deckMarkup(recipes, params) : `<div class="empty-collection">${filtered
+            ? '<p>No recipes match this view.</p><a href="/">Browse all recipes</a>'
+            : '<p>Your recipe box is empty.</p><a href="/add">Add your first recipe</a>'}</div>`}
         ${pages > 1 ? `<nav class="pagination" aria-label="Recipe pages">
             ${page > 1 ? `<a href="${escape(collectionLink(params, { page: page - 1 }))}">← Previous</a>` : ''}
             <span class="page-info">Page ${page} of ${pages}</span>
             ${page < pages ? `<a href="${escape(collectionLink(params, { page: page + 1 }))}">Next →</a>` : ''}
         </nav>` : ''}`;
-    if (recipes.length) await import('../static/deck.js');
+    if (!recipes.length) return;
+    await import('../static/deck.js');
+    const list = results.querySelector('#recipe-list');
+    const status = results.querySelector('#recipe-list-status');
+    list.addEventListener('click', async event => {
+        const button = event.target.closest('[data-delete-recipe]');
+        if (!button || !window.confirm('Delete this recipe?')) return;
+        button.disabled = true;
+        status.textContent = '';
+        try {
+            await api(`/api/delete/${button.dataset.deleteRecipe}`, { method: 'POST' });
+            location.reload();
+        } catch (error) {
+            status.textContent = error.message;
+            button.disabled = false;
+        }
+    });
 }
 
 function deckMarkup(recipes, params) {
@@ -63,7 +83,7 @@ function deckMarkup(recipes, params) {
             <div class="deck-stack" id="deck-stack">${recipes.map(recipe => `
                 <a class="flashcard" draggable="false" href="/recipe/${recipe.id}">
                     <div class="flashcard-media">
-                        ${photoMarkup(recipe.photo, '<div class="flashcard-placeholder">🍽️</div>')}
+                        ${photoMarkup(recipe.photo, { placeholder: '<div class="flashcard-placeholder">🍽️</div>' })}
                         ${recipe.favorite ? '<span class="flashcard-fav" aria-label="Favorite">★</span>' : ''}
                     </div>
                     <div class="flashcard-body">
@@ -78,9 +98,12 @@ function deckMarkup(recipes, params) {
                 <button class="deck-arrow" id="deck-next" aria-label="Next recipe" type="button">→</button>
             </div>
         </section>
+        <p id="recipe-list-status" class="suggest-status" role="status"></p>
         <ul id="recipe-list">${recipes.map(recipe => `
             <li>${recipe.favorite ? '<span class="star">★</span>' : ''}<a href="/recipe/${recipe.id}">${escape(recipe.title)}</a>
+                ${recipe.rating ? `<span class="mini-rating" aria-label="${recipe.rating} out of 5 stars">${'★'.repeat(Math.max(0, Math.min(5, recipe.rating)))}</span>` : ''}
                 ${recipe.tags.map(tag => `<a class="tag" href="${escape(collectionLink(params, { tag, page: '' }))}">${escape(tag)}</a>`).join('')}
+                <button type="button" class="delete-btn" data-delete-recipe="${recipe.id}" aria-label="Delete ${escape(recipe.title)}">✕</button>
             </li>`).join('')}
         </ul>`;
 }

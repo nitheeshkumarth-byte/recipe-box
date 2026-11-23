@@ -15,8 +15,8 @@ export async function api(path, { method = 'GET', body } = {}) {
     return data;
 }
 
-export function photoMarkup(path, placeholder = '') {
+export function photoMarkup(path, { placeholder = '', className = '', alt = '' } = {}) {
     if (!path?.startsWith('/photos/')) return placeholder;
-    return `<img src="${escape(path)}" alt="" loading="lazy" draggable="false" data-recipe-photo>
-        <div class="flashcard-placeholder photo-unavailable" hidden>Photo unavailable</div>`;
+    return `<img src="${escape(path)}" class="${escape(className)}" alt="${escape(alt)}" loading="lazy" draggable="false" data-recipe-photo>
+        <div class="${placeholder ? 'flashcard-placeholder ' : ''}photo-unavailable" hidden>Photo unavailable</div>`;
 }

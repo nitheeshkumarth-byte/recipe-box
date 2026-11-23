@@ -15,7 +15,7 @@ if (frontendHosts.includes(new URL(backend).hostname)) {
 
 const forwarded = [
     '/api/:path*', '/auth/:path*', '/photos/:path*', '/static/:path*',
-    '/manifest.webmanifest', '/service-worker.js', '/offline', '/healthz', '/readyz',
+    '/apidocs', '/swagger.json', '/manifest.webmanifest', '/service-worker.js', '/offline', '/healthz', '/readyz',
 ];
 
 export const config = {
