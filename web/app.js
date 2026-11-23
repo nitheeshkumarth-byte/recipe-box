@@ -20,8 +20,10 @@ async function start() {
         window.csrfHeaders = { 'X-CSRF-Token': session.csrf_token };
         document.getElementById('favorites-link').hidden = false;
         document.getElementById('add-link').hidden = false;
+        document.getElementById('editor-sign-in').hidden = !session.editor_available || session.editor_signed_in;
         const signOut = document.querySelector('.nav-signout');
-        signOut.hidden = !session.signed_in;
+        signOut.hidden = !session.signed_in && !session.editor_signed_in;
+        if (session.editor_signed_in) signOut.action = '/auth/editor/sign-out';
         signOut.elements.csrf_token.value = session.csrf_token;
 
         const path = location.pathname.replace(/\/$/, '') || '/';

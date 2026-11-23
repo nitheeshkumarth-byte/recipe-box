@@ -62,6 +62,13 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="nav-link">Sign out</button>
                 </form>
+                {% elif editor_access %}
+                <form class="nav-signout" method="post" action="{{ url_for('editor_sign_out') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-link">Sign out</button>
+                </form>
+                {% elif editor_available and request.endpoint != 'editor_sign_in' %}
+                <a href="{{ url_for('editor_sign_in') }}" class="nav-link">Editor sign-in</a>
                 {% endif %}
             </div>
         </nav>

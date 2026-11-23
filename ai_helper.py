@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class AIUnavailable(RuntimeError):
     pass
 
-MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 TRANSIENT_STATUS_CODES = (429, 500, 503)
 
@@ -24,10 +24,11 @@ def _generate(prompt):
     key = os.getenv("GEMINI_API_KEY")
     if not key:
         raise AIUnavailable("AI features are unavailable until Gemini is configured.")
+    model = os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
     with genai.Client(api_key=key) as client:
         for attempt in range(3):
             try:
-                return client.models.generate_content(model=MODEL, contents=prompt).text
+                return client.models.generate_content(model=model, contents=prompt).text
             except Exception as error:
                 status = getattr(error, "code", None)
                 if status in TRANSIENT_STATUS_CODES and attempt < 2:

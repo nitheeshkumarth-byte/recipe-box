@@ -150,6 +150,54 @@ class RecipeBoxTests(unittest.TestCase):
                 self.client.get("/", auth=("recipebox", "test-password")).status_code, 200,
             )
 
+    def test_render_public_chef_answers_locally_while_writes_and_gemini_stay_protected(self):
+        with (
+            patch.object(recipe_box, "ON_RENDER", True),
+            patch.dict(os.environ, {"SECRET_KEY": "test-secret", "CHEF_RAG_PROVIDER": "gemini"}),
+            patch("chef_rag.similar_passages") as embeddings,
+            patch("chef_rag.model_answer") as provider,
+        ):
+            path = "/api/chef-chat"
+            question = {"question": "How do I upload a photo?"}
+            self.assertEqual(self.client.post(path, json=question).status_code, 400)
+            reply = self.client.post(path, json=question, headers=self.headers)
+            self.assertEqual(reply.status_code, 200)
+            self.assertIn("5 MB", reply.json["answer"])
+            self.assertTrue(reply.cache_control.no_store)
+            self.assertEqual(self.submit("/api/recipes").status_code, 503)
+            self.assertEqual(self.client.post(
+                "/api/recipe/suggest", json={"title": "Soup"}, headers=self.headers,
+            ).status_code, 503)
+            embeddings.assert_not_called()
+            provider.assert_not_called()
+            with patch.object(recipe_box, "allow_guest_request", return_value=False):
+                self.assertEqual(self.client.post(path, json=question, headers=self.headers).status_code, 429)
+
+    def test_editor_session_allows_gemini_and_expires_when_password_changes(self):
+        settings = {"SECRET_KEY": "test-secret", "RECIPE_BOX_EDITOR_PASSWORD": "editor-password-for-test"}
+        with patch.object(recipe_box, "ON_RENDER", True), patch.dict(os.environ, settings):
+            self.assertEqual(self.client.get("/").status_code, 200)
+            self.assertTrue(self.client.get("/api/session").json["editor_available"])
+            path = "/api/recipe/suggest"
+            body = {"title": "Soup"}
+            self.assertEqual(self.client.post(path, json=body, headers=self.headers).status_code, 401)
+            sign_in = "/auth/editor"
+            form = {"password": settings["RECIPE_BOX_EDITOR_PASSWORD"]}
+            self.assertEqual(self.client.get(sign_in).status_code, 200)
+            self.assertEqual(self.client.post(sign_in, data=form).status_code, 400)
+            self.assertEqual(self.client.post(sign_in, data={"password": "wrong"}, headers=self.headers).status_code, 401)
+            self.assertEqual(self.client.post(sign_in, data=form, headers=self.headers).status_code, 303)
+            state = self.client.get("/api/session").json
+            self.assertTrue(state["editor_signed_in"])
+            self.assertNotEqual(state["csrf_token"], self.headers["X-CSRF-Token"])
+            headers = {"X-CSRF-Token": state["csrf_token"]}
+            with patch.object(recipe_box, "get_recipe_suggestion", return_value={"title": "Soup"}):
+                self.assertEqual(self.client.post(path, json=body, headers=headers).status_code, 200)
+            with patch.dict(os.environ, {"RECIPE_BOX_EDITOR_PASSWORD": "rotated-password-for-test"}):
+                self.assertEqual(self.client.post(path, json=body, headers=headers).status_code, 401)
+            self.assertEqual(self.client.post("/auth/editor/sign-out", headers=headers).status_code, 303)
+            self.assertFalse(self.client.get("/api/session").json["editor_signed_in"])
+
     def test_photo_replacement_keeps_old_file_after_failed_commit(self):
         file_bytes = b"\x89PNG\r\n\x1a\nimage signature fixture"
         with tempfile.TemporaryDirectory() as folder, patch.object(recipe_box, "LOCAL_UPLOADS", Path(folder)):

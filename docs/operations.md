@@ -26,6 +26,8 @@ To develop locally, run `python app.py` and then `npm ci --prefix web` and `npm 
 
 Keep the production apex on Render until the Vercel preview passes sign-in, recipe, upload and offline checks. Verify `api.jobscope.eu` on Render, then proxy that record in Cloudflare. Set `RECIPE_BOX_BACKEND=https://api.jobscope.eu` and redeploy Vercel before moving the apex to Vercel. Using the apex itself as Vercel's backend after cutover would create a routing loop. Bypass shared caching for authenticated pages, API responses, and private photos. Keep the previous DNS target for rollback.
 
+For public browsing with private editing, set a stable `SECRET_KEY` and a unique `RECIPE_BOX_EDITOR_PASSWORD` on Render. Leave `RECIPE_BOX_PASSWORD` and Supabase Auth settings unset in this mode. Visitors can ask the local chef about public recipes. Editors sign in at `/auth/editor` to save recipes or use Gemini features. Keep `GEMINI_API_KEY` on Render and use `GEMINI_MODEL` only to override the default model.
+
 ## Backup and restore drill
 
 Configure Supabase database backups and point-in-time recovery to match your recovery target. Copy Storage objects to a separate protected backup location on a matching schedule. Database backups contain photo references, while Storage copies contain the files.

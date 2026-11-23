@@ -3,6 +3,7 @@ import hmac
 import math
 import os
 import secrets
+import time
 from contextlib import closing
 from functools import lru_cache
 from itertools import zip_longest
@@ -37,7 +38,7 @@ from recipe_access import audit, recipe_query, register_access_commands
 from recipe_auth import configure_auth, signed_in_user
 from recipe_chat import answer_recipe_question
 from pwa import pwa_bp
-from shared_cache import CacheUnavailable, allow_ai_request
+from shared_cache import CacheUnavailable, allow_ai_request, allow_guest_request
 from swagger_docs import swagger_bp
 
 load_dotenv()
@@ -113,6 +114,22 @@ def csrf_token():
     return session["csrf_token"]
 
 
+def editor_password():
+    if app.config["ACCOUNT_AUTH"] or ACCESS_PASSWORD or not os.getenv("SECRET_KEY"):
+        return None
+    return os.getenv("RECIPE_BOX_EDITOR_PASSWORD") or None
+
+
+def editor_proof(password):
+    return hmac.digest(app.secret_key.encode(), b"recipe-box-editor:" + password.encode(), "sha256").hex()
+
+
+def editor_signed_in():
+    password = editor_password()
+    return bool(password and session.get("editor_until", 0) > time.time() and
+                hmac.compare_digest(session.get("editor_proof", ""), editor_proof(password)))
+
+
 @app.before_request
 def protect_recipe_box():
     if request.endpoint in {"health", "ready", "pwa.manifest", "pwa.service_worker", "pwa.offline"}:
@@ -141,8 +158,18 @@ def protect_recipe_box():
             )
     if request.method in {"GET", "HEAD", "OPTIONS"}:
         return None
-    if ON_RENDER and not app.config["ACCOUNT_AUTH"] and (not ACCESS_PASSWORD or not os.getenv("SECRET_KEY")):
-        abort(503, "Configure RECIPE_BOX_PASSWORD and SECRET_KEY to enable writes.")
+    if (ON_RENDER and not app.config["ACCOUNT_AUTH"] and not editor_signed_in()
+            and (not ACCESS_PASSWORD or not os.getenv("SECRET_KEY")) and request.endpoint != "editor_sign_in"):
+        if request.endpoint == "chef_chat" and os.getenv("SECRET_KEY"):
+            g.public_chef = True
+        else:
+            if editor_password():
+                if request.path.startswith("/api/"):
+                    return jsonify(success=False, error="Sign in as an editor to use this feature."), 401
+                return redirect(url_for("editor_sign_in"), code=303)
+            if request.path.startswith("/api/"):
+                return jsonify(success=False, error="Recipe Box needs sign-in configured for this feature."), 503
+            abort(503, "Configure RECIPE_BOX_PASSWORD and SECRET_KEY to enable writes.")
     expected = session.get("csrf_token")
     supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token", "")
     if not expected or not hmac.compare_digest(expected.encode(), supplied.encode()):
@@ -166,7 +193,8 @@ def thumbnail_name(filename):
 
 @app.context_processor
 def template_helpers():
-    return {"image_url": image_url, "csrf_token": csrf_token}
+    return {"image_url": image_url, "csrf_token": csrf_token,
+            "editor_available": bool(editor_password()), "editor_access": editor_signed_in()}
 
 
 @app.get("/photos/<filename>")
@@ -471,7 +499,7 @@ def ready():
 @app.after_request
 def protect_private_responses(response):
     if request.path.startswith(("/api/", "/auth/", "/photos/")) or (
-        g.get("recipe_user_id") and request.endpoint != "static"
+        request.endpoint != "static" and (g.get("recipe_user_id") or editor_signed_in())
     ):
         response.cache_control.private = True
         response.cache_control.no_store = True
@@ -480,9 +508,11 @@ def protect_private_responses(response):
     return response
 
 
-def rate_limit_ai():
+def rate_limit_ai(*, public_chef=False):
     try:
         allowed = allow_ai_request(g.get("recipe_user_id") or session["csrf_token"])
+        if allowed and public_chef:
+            allowed = allow_guest_request("chef", limit=60)
     except CacheUnavailable:
         return jsonify(success=False, error="Please try again shortly."), 503
     if not allowed:
@@ -545,7 +575,36 @@ def recipe_payload(recipe, *, detail=False):
 
 @app.get("/api/session")
 def api_session():
-    return jsonify(csrf_token=csrf_token(), signed_in=bool(g.get("recipe_user_id")))
+    return jsonify(csrf_token=csrf_token(), signed_in=bool(g.get("recipe_user_id")),
+                   editor_available=bool(editor_password()), editor_signed_in=editor_signed_in())
+
+
+@app.route("/auth/editor", methods=["GET", "POST"])
+def editor_sign_in():
+    password = editor_password()
+    if not password:
+        abort(404)
+    if request.method == "GET":
+        if editor_signed_in():
+            return redirect(url_for("home"))
+        return render_template("editor_sign_in.html")
+    try:
+        if not allow_guest_request("editor-sign-in", limit=12):
+            return render_template("editor_sign_in.html", error="Try signing in again in a minute."), 429
+    except CacheUnavailable:
+        return render_template("editor_sign_in.html", error="Sign-in is temporarily unavailable."), 503
+    supplied = request.form.get("password", "")
+    if len(supplied) > 1024 or not hmac.compare_digest(supplied.encode(), password.encode()):
+        return render_template("editor_sign_in.html", error="The editor password is incorrect."), 401
+    session.clear()
+    session.update(editor_proof=editor_proof(password), editor_until=int(time.time()) + 8 * 60 * 60)
+    return redirect(url_for("home"), code=303)
+
+
+@app.post("/auth/editor/sign-out")
+def editor_sign_out():
+    session.clear()
+    return redirect(url_for("home"), code=303)
 
 
 @app.route("/api/recipes", methods=["GET", "POST"])
@@ -588,7 +647,8 @@ def chef_chat():
     if not 1 <= len(question) <= 400:
         return jsonify(success=False, error="Enter a question of 400 characters or fewer."), 400
 
-    limited = rate_limit_ai()
+    public_chef = g.get("public_chef", False)
+    limited = rate_limit_ai(public_chef=public_chef)
     if limited is not None:
         return limited
     key = cache_key(session["csrf_token"])
@@ -606,7 +666,7 @@ def chef_chat():
     recipe_answer = answer_recipe_question(question, memory, page_recipe_id)
     if recipe_answer is None:
         db.session.rollback()
-        use_gemini = os.getenv("CHEF_RAG_PROVIDER", "local").lower() == "gemini"
+        use_gemini = not public_chef and os.getenv("CHEF_RAG_PROVIDER", "local").lower() == "gemini"
         answer, _, turn = answer_question(question, memory, use_gemini=use_gemini)
     else:
         answer, turn = recipe_answer

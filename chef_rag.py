@@ -168,7 +168,7 @@ def index(root=PROJECT_ROOT):
     }
 
 
-def retrieve(question, memory):
+def retrieve(question, memory, *, use_gemini):
     passages, weights = index()
     terms = set(tokens(question))
     if OVERVIEW.search(question):
@@ -200,7 +200,7 @@ def retrieve(question, memory):
         if score >= 1.5 and (common & terms or prior):
             ranked.append((score, passage))
 
-    semantic = similar_passages(question) if ranked and max(score for score, _ in ranked) >= 2.2 else {}
+    semantic = similar_passages(question) if use_gemini and ranked and max(score for score, _ in ranked) >= 2.2 else {}
     if semantic:
         ranked = [
             (score * (1 + .38 * semantic.get((passage.path, passage.line, digest(passage)), 0)), passage)
@@ -289,7 +289,7 @@ def answer_question(question, memory, use_gemini=False):
     if reply:
         return reply, [], None
     clean = GREETING_PREFIX.sub("", tidy_question(question))
-    passages, scored, weights = retrieve(clean, memory)
+    passages, scored, weights = retrieve(clean, memory, use_gemini=use_gemini)
     if not passages:
         return UNKNOWN, [], None
     if use_gemini:

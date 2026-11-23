@@ -1,6 +1,8 @@
 import hashlib
 import os
+import time
 from functools import lru_cache
+from threading import Lock
 from flask import current_app, has_app_context
 
 
@@ -21,7 +23,26 @@ def connect_redis(url):
     return Redis.from_url(url, socket_connect_timeout=2, socket_timeout=2, decode_responses=True)
 
 
-def allow_ai_request(user_id):
+_guest_lock = Lock()
+_guest_windows = {}
+
+
+def allow_guest_request(action, *, limit):
+    if redis_client() is not None:
+        return allow_ai_request(f"guest:{action}", limit=limit)
+    # With no shared cache, cap the public workload in each web worker.
+    with _guest_lock:
+        minute = int(time.monotonic() // 60)
+        previous, count = _guest_windows.get(action, (-1, 0))
+        if minute != previous:
+            count = 0
+        if count >= limit:
+            return False
+        _guest_windows[action] = minute, count + 1
+        return True
+
+
+def allow_ai_request(user_id, *, limit=12):
     client = redis_client()
     if client is None:
         return True
@@ -35,4 +56,4 @@ def allow_ai_request(user_id):
         """, 1, f"recipe:ai:{identifier}", 60)
     except RedisError as error:
         raise CacheUnavailable("Shared rate limiting is temporarily unavailable.") from error
-    return count <= 12
+    return count <= limit
