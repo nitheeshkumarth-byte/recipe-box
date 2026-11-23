@@ -133,7 +133,9 @@ def editor_signed_in():
 
 @app.before_request
 def protect_recipe_box():
-    if request.endpoint in {"health", "ready", "site_styles", "pwa.manifest", "pwa.service_worker", "pwa.offline"}:
+    if request.endpoint in {
+        "health", "ready", "site_styles", "pwa.favicon", "pwa.manifest", "pwa.service_worker", "pwa.offline",
+    }:
         return None
     if request.endpoint == "static" and not request.view_args["filename"].startswith("uploads/"):
         return None

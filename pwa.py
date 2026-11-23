@@ -3,6 +3,12 @@ from flask import Blueprint, jsonify, render_template, send_from_directory, curr
 pwa_bp = Blueprint("pwa", __name__)
 
 
+@pwa_bp.get("/favicon.ico")
+def favicon():
+    return send_from_directory(current_app.static_folder, "icons/recipe-box-favicon.ico",
+                               mimetype="image/vnd.microsoft.icon")
+
+
 @pwa_bp.get("/manifest.webmanifest")
 def manifest():
     icon = lambda name: url_for("static", filename=f"icons/{name}")
