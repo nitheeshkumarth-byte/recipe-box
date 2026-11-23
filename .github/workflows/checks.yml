@@ -1,0 +1,73 @@
+name: Recipe Box checks
+
+"on": [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: recipe_ci
+          POSTGRES_PASSWORD: recipe_ci
+          POSTGRES_DB: recipe_box_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U recipe_ci -d recipe_box_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      RECIPE_TEST_POSTGRES_URL: postgresql://recipe_ci:recipe_ci@127.0.0.1:5432/recipe_box_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt playwright
+      - run: python -m unittest discover -s tests -v
+      - run: python -m tests.postgres_smoke
+      - run: python -m tests.vector_smoke
+      - run: python -m tests.redis_smoke
+        env:
+          REDIS_URL: redis://127.0.0.1:6379/15
+      - run: playwright install --with-deps chromium
+      - run: python -m tests.browser_smoke
+      - name: Restore database into an empty CI database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" pg_dump -U recipe_ci -Fc recipe_box_ci -f /tmp/recipe-box-ci.dump
+          docker exec "$POSTGRES_CONTAINER" createdb -U recipe_ci recipe_box_restored
+          docker exec "$POSTGRES_CONTAINER" pg_restore -U recipe_ci --exit-on-error -d recipe_box_restored /tmp/recipe-box-ci.dump
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U recipe_ci -d recipe_box_restored -Atc 'SELECT count(*) FROM recipe')" = 2
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npx expo export --platform android --output-dir dist-android
+        env:
+          EXPO_PUBLIC_RECIPE_BOX_URL: https://recipe-box.example
+      - run: npx expo export --platform ios --output-dir dist-ios
+        env:
+          EXPO_PUBLIC_RECIPE_BOX_URL: https://recipe-box.example

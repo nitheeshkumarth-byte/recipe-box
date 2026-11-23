@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#304d3b">
+    <title>Recipe Box is offline</title>
+    <style>
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f6f4eb; color: #263129; font: 1rem system-ui, sans-serif; }
+        main { width: min(26rem, 85vw); }
+        h1 { font-family: Georgia, serif; }
+        a { color: #304d3b; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Recipe Box is offline</h1>
+        <p>Reconnect to open your recipes.</p>
+        <a href="{{ url_for('home') }}">Try again</a>
+    </main>
+</body>
+</html>

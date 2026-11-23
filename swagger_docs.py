@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, render_template_string
+from flask import Blueprint, jsonify, render_template_string, url_for
 
 swagger_bp = Blueprint("swagger_bp", __name__)
 
@@ -37,7 +37,7 @@ SWAGGER_SPEC = {
             "post": {
                 "tags": ["AI Services"],
                 "summary": "Suggest recipe details using AI",
-                "description": "Queries Gemini AI to fetch or compose a full recipe (ingredients, instructions, servings, tags) from a dish title. Also checks if a recipe with that title already exists in the box.",
+                "description": "Uses Gemini to draft a recipe from a dish title. Checks for an exact title match before generating a suggestion.",
                 "operationId": "suggestRecipe",
                 "requestBody": {
                     "required": True,
@@ -121,7 +121,7 @@ SWAGGER_SPEC = {
                             }
                         }
                     },
-                    "500": {
+                    "503": {
                         "description": "AI generation failed or service temporarily unavailable"
                     }
                 }
@@ -164,7 +164,7 @@ SWAGGER_SPEC = {
                         }
                     },
                     "404": {"description": "Recipe not found"},
-                    "500": {"description": "AI origin lookup error"}
+                    "503": {"description": "AI origin lookup unavailable"}
                 }
             }
         },
@@ -206,7 +206,7 @@ SWAGGER_SPEC = {
                     },
                     "400": {"description": "Recipe has no ingredients listed"},
                     "404": {"description": "Recipe not found"},
-                    "500": {"description": "AI estimation error"}
+                    "503": {"description": "AI estimation unavailable"}
                 }
             }
         },
@@ -547,7 +547,14 @@ SWAGGER_HTML_TEMPLATE = """<!DOCTYPE html>
         filter: true,
         showExtensions: true,
         showCommonExtensions: true,
-        tryItOutEnabled: true
+        tryItOutEnabled: true,
+        requestInterceptor: (request) => {
+          const url = new URL(request.url, window.location.href);
+          if (url.origin === window.location.origin && (request.method || "GET").toUpperCase() === "POST") {
+            request.headers = { ...request.headers, "X-CSRF-Token": {{ csrf_token()|tojson }} };
+          }
+          return request;
+        }
       });
       window.ui = ui;
     };
@@ -568,5 +575,5 @@ def swagger_json():
 @swagger_bp.route("/apidocs")
 def swagger_ui():
     """Renders the interactive Swagger UI."""
-    return render_template_string(SWAGGER_HTML_TEMPLATE, spec_url="/swagger.json")
+    return render_template_string(SWAGGER_HTML_TEMPLATE, spec_url=url_for("swagger_bp.swagger_json"))
 

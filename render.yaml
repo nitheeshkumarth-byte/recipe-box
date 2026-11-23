@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: recipe-box-web
+    runtime: python
+    plan: 0.5c-512mb
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: bash scripts/migrate.sh
+    startCommand: bash scripts/start_web.sh
+    healthCheckPath: /readyz
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: recipe-box-production
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: recipe-box-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: recipe-box-jobs
+          property: connectionString
+  - type: worker
+    name: recipe-box-photos
+    runtime: python
+    plan: 0.5c-512mb
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery --app tasks.celery_app worker --loglevel info --concurrency 1
+    envVars:
+      - fromGroup: recipe-box-production
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: recipe-box-jobs
+          property: connectionString
+  - type: keyvalue
+    name: recipe-box-cache
+    plan: 256mb
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+  - type: keyvalue
+    name: recipe-box-jobs
+    plan: 256mb
+    ipAllowList: []
+    maxmemoryPolicy: noeviction

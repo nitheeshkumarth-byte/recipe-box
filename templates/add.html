@@ -4,9 +4,9 @@
 {% block content %}
 <div class="form-page">
     <h1 class="form-title">{{ 'Edit Recipe' if recipe else 'Add a New Recipe' }}</h1>
-    <p class="form-subtitle">{{ 'Update the details below to save your changes.' if recipe else 'Fill in the details to add a new recipe to your box.' }}</p>
 
     <form method="POST" enctype="multipart/form-data" class="recipe-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-card">
             <div class="form-section">
                 <h2 class="form-heading">🧾 Basics</h2>
@@ -14,20 +14,28 @@
                 <div class="field">
                     <label for="f-title">Title</label>
                     <div class="title-input-group">
-                        <input type="text" id="f-title" name="title" required value="{{ recipe.title if recipe else '' }}" placeholder="e.g. Creamy Mushroom Pasta">
-                        <button type="button" id="suggest-btn" class="suggest-btn" {% if recipe %}hidden{% endif %}>✨ Auto-fill</button>
+                        <input type="text" id="f-title" name="title" required maxlength="120"
+                            value="{{ form.title if form else (recipe.title if recipe else '') }}"
+                            placeholder="e.g. Creamy Mushroom Pasta">
+                        <button type="button" id="suggest-btn" class="suggest-btn"
+                            data-url="{{ url_for('api_recipe_suggest') }}" {% if recipe %}hidden{% endif %}>✨
+                            Auto-fill</button>
                     </div>
-                    <p class="suggest-status" id="suggest-status" hidden></p>
+                    <p class="suggest-status" id="suggest-status" role="status" hidden></p>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
                         <label for="f-servings">Servings</label>
-                        <input type="number" id="f-servings" name="servings" min="1" value="{{ recipe.servings if recipe else 4 }}">
+                        <input type="{{ 'text' if form else 'number' }}" inputmode="numeric" id="f-servings"
+                            name="servings" min="1"
+                            value="{{ form.servings if form else (recipe.servings if recipe else 4) }}">
                     </div>
                     <div class="field">
                         <label for="f-tags">Tags<span class="field-hint">(comma-separated)</span></label>
-                        <input type="text" id="f-tags" name="tags" value="{{ recipe.tags|map(attribute='name')|join(', ') if recipe else '' }}" placeholder="dinner, quick, veg">
+                        <input type="text" id="f-tags" name="tags"
+                            value="{{ form.tags if form else (recipe.tags|map(attribute='name')|join(', ') if recipe else '') }}"
+                            placeholder="dinner, quick, veg">
                     </div>
                 </div>
             </div>
@@ -36,16 +44,20 @@
                 <h2 class="form-heading">📷 Photo</h2>
                 <div class="field">
                     <label class="file-label">
-                        <input type="file" name="image" accept="image/*" id="f-image">
+                        <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp" id="f-image">
                         <span class="file-drop">
-                            {% if recipe and recipe.image_filename %}🖼️ Change photo{% else %}📤 Upload a photo{% endif %}
+                            {% if recipe and recipe.image_filename %}🖼️ Change photo{% else %}📤 Upload a photo{% endif
+                            %}
                         </span>
                         <span class="file-name" id="file-name"></span>
                     </label>
+                    <p class="hint">PNG, JPEG, GIF, or WebP up to 5 MB.</p>
                     {% if recipe and recipe.image_filename %}
-                    <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}" class="form-photo-preview">
-                    <p class="hint">Uploading a new photo will replace this one.</p>
-                    {% endif %}
+                        <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}"
+                            class="form-photo-preview" data-recipe-photo>
+                        <div class="photo-unavailable" hidden>Photo unavailable</div>
+                        <p class="hint">Uploading a new photo will replace this one.</p>
+                        {% endif %}
                 </div>
             </div>
         </div>
@@ -54,23 +66,19 @@
             <div class="form-section">
                 <h2 class="form-heading">🥄 Ingredients</h2>
                 <div id="ingredient-rows">
-                    {% if recipe and recipe.ingredient_lines %}
-                    {% for ing in recipe.ingredient_lines %}
+                    {% set rows = form.ingredient_lines if form else (recipe.ingredient_lines if recipe else []) %}
+                    {% for ing in rows or [{}] %}
                     <div class="ingredient-row">
-                        <input type="number" step="any" name="ing_amount" placeholder="Amount" value="{{ ing.amount }}">
-                        <input type="text" name="ing_unit" placeholder="Unit" value="{{ ing.unit }}">
-                        <input type="text" name="ing_name" placeholder="Ingredient name" value="{{ ing.name }}">
+                        <input type="{{ 'text' if form else 'number' }}" inputmode="decimal" step="any" min="0"
+                            name="ing_amount" aria-label="Amount" placeholder="Amount"
+                            value="{{ ing.amount|default('') }}">
+                        <input type="text" name="ing_unit" placeholder="Unit" maxlength="20" aria-label="Unit"
+                            value="{{ ing.unit|default('', true) }}">
+                        <input type="text" name="ing_name" placeholder="Ingredient name" maxlength="120"
+                            aria-label="Ingredient name" value="{{ ing.name|default('') }}">
                         <button type="button" class="remove-row-btn" aria-label="Remove ingredient">✕</button>
                     </div>
                     {% endfor %}
-                    {% else %}
-                    <div class="ingredient-row">
-                        <input type="number" step="any" name="ing_amount" placeholder="Amount">
-                        <input type="text" name="ing_unit" placeholder="Unit">
-                        <input type="text" name="ing_name" placeholder="Ingredient name">
-                        <button type="button" class="remove-row-btn" aria-label="Remove ingredient">✕</button>
-                    </div>
-                    {% endif %}
                 </div>
                 <div class="add-row-wrap">
                     <button type="button" id="add-row-btn">+ Add ingredient</button>
@@ -81,7 +89,8 @@
                 <h2 class="form-heading">📝 Instructions</h2>
                 <div class="field">
                     <label for="f-instructions">Step by step</label>
-                    <textarea id="f-instructions" name="instructions" required rows="8" placeholder="Describe how to make this dish...">{{ recipe.instructions if recipe else '' }}</textarea>
+                    <textarea id="f-instructions" name="instructions" required rows="8"
+                        placeholder="Describe how to make this dish...">{{ form.instructions if form else (recipe.instructions if recipe else '') }}</textarea>
                 </div>
             </div>
         </div>
@@ -95,12 +104,6 @@
 <script>
     const form = document.querySelector(".recipe-form");
 
-    form.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && e.target.tagName !== "TEXTAREA" && e.target.getAttribute("type") !== "submit") {
-            e.preventDefault();
-        }
-    });
-
     const fileInput = document.getElementById("f-image");
     const fileName = document.getElementById("file-name");
     if (fileInput) {
@@ -109,46 +112,37 @@
         });
     }
 
-    document.getElementById("add-row-btn").addEventListener("click", (e) => {
-        e.preventDefault();
-        const container = document.getElementById("ingredient-rows");
-        const row = document.createElement("div");
-        row.className = "ingredient-row";
-        row.innerHTML = `
-        <input type="number" step="any" name="ing_amount" placeholder="Amount">
-        <input type="text" name="ing_unit" placeholder="Unit">
-        <input type="text" name="ing_name" placeholder="Ingredient name">
-        <button type="button" class="remove-row-btn" aria-label="Remove ingredient">✕</button>
-    `;
-        container.appendChild(row);
-        row.querySelector("input[type=text]")?.focus();
-    });
-
-    document.getElementById("ingredient-rows").addEventListener("click", (e) => {
-        if (e.target.classList.contains("remove-row-btn")) {
-            e.target.closest(".ingredient-row").remove();
-        }
-    });
-
     const ingredientContainer = document.getElementById("ingredient-rows");
     const suggestBtn = document.getElementById("suggest-btn");
     const suggestStatus = document.getElementById("suggest-status");
     const titleInput = document.getElementById("f-title");
 
-    const makeIngredientRow = (ing) => {
+    const makeIngredientRow = (ingredient = {}) => {
         const row = document.createElement("div");
         row.className = "ingredient-row";
-        const amount = ing && ing.amount != null ? ing.amount : "";
-        const unit = ing && ing.unit ? ing.unit : "";
-        const name = ing && ing.name ? ing.name : "";
         row.innerHTML = `
-        <input type="number" step="any" name="ing_amount" placeholder="Amount" value="${amount}">
-        <input type="text" name="ing_unit" placeholder="Unit" value="${unit}">
-        <input type="text" name="ing_name" placeholder="Ingredient name" value="${name}">
-        <button type="button" class="remove-row-btn" aria-label="Remove ingredient">✕</button>
-    `;
+            <input type="number" step="any" min="0" name="ing_amount" aria-label="Amount" placeholder="Amount">
+            <input type="text" name="ing_unit" maxlength="20" aria-label="Unit" placeholder="Unit">
+            <input type="text" name="ing_name" maxlength="120" aria-label="Ingredient name" placeholder="Ingredient name">
+            <button type="button" class="remove-row-btn" aria-label="Remove ingredient">&times;</button>
+        `;
+        row.querySelector('[name="ing_amount"]').value = ingredient.amount ?? "";
+        row.querySelector('[name="ing_unit"]').value = ingredient.unit ?? "";
+        row.querySelector('[name="ing_name"]').value = ingredient.name ?? "";
         return row;
     };
+
+    document.getElementById("add-row-btn").addEventListener("click", () => {
+        const row = makeIngredientRow();
+        ingredientContainer.appendChild(row);
+        row.querySelector("input").focus();
+    });
+
+    ingredientContainer.addEventListener("click", (event) => {
+        if (event.target.classList.contains("remove-row-btn")) {
+            event.target.closest(".ingredient-row").remove();
+        }
+    });
 
     const setStatus = (msg, kind = "") => {
         suggestStatus.textContent = msg;
@@ -169,12 +163,13 @@
             setStatus("");
 
             try {
-                const res = await fetch("/api/recipe/suggest", {
+                const res = await fetch(suggestBtn.dataset.url, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { ...csrfHeaders, "Content-Type": "application/json" },
                     body: JSON.stringify({ title })
                 });
                 const data = await res.json();
+                if (titleInput.value.trim() !== title) return;
 
                 if (!res.ok && data.already_exists) {
                     suggestBtn.disabled = false;
@@ -196,7 +191,7 @@
                 if (servingsInput && recipe.servings) servingsInput.value = recipe.servings;
 
                 // Fill ingredients
-                ingredientContainer.innerHTML = "";
+                ingredientContainer.replaceChildren();
                 (recipe.ingredients && recipe.ingredients.length
                     ? recipe.ingredients
                     : [{}]).forEach(ing => ingredientContainer.appendChild(makeIngredientRow(ing)));
@@ -207,11 +202,11 @@
 
                 // Fill tags
                 const tags = form.querySelector('input[name="tags"]');
-                if (tags && recipe.tags && recipe.tags.length) tags.value = recipe.tags.join(", ");
+                if (tags) tags.value = recipe.tags.join(", ");
 
                 suggestBtn.disabled = true;
                 suggestBtn.textContent = "✓ Filled";
-                setStatus(`Found "${recipe.title}". Review and save.`, "ok");
+                setStatus(`AI suggested "${recipe.title}". Review before saving.`, "ok");
             } catch (err) {
                 suggestBtn.disabled = false;
                 suggestBtn.textContent = "✨ Auto-fill";

@@ -1,48 +1,66 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="search-bar">
-	<form method="GET">
-		<input type="text" name="q" placeholder="Search recipes, ingredients, tags..." value="{{ search }}">
-		<button type="submit">Search</button>
-	</form>
-</div>
+<section class="collection-hero" aria-labelledby="collection-title">
+	<div class="collection-intro">
+		<h1 id="collection-title">{{ 'Favorite recipes' if favorites_only else 'Your recipe box' }}</h1>
+		<div class="search-bar">
+			<form method="GET" action="{{ url_for('home') }}" role="search">
+				{% if favorites_only %}<input type="hidden" name="favorites" value="1">{% endif %}
+				{% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+				<input type="search" name="q" aria-label="Search recipes"
+					placeholder="Search recipes, ingredients, tags…" value="{{ search }}">
+				<button type="submit">Search</button>
+			</form>
+		</div>
+	</div>
+</section>
 
 {% if search or favorites_only or tag %}
 <div class="filter-bar">
 	{% if favorites_only %}
-	<a href="{{ url_for('home', q=search if search else none, tag=tag if tag else none) }}" class="filter-pill active">★ Favorites</a>
+	<a href="{{ url_for('home', favorites='1', q=search if search else none, tag=tag if tag else none) }}"
+		class="filter-pill active" aria-current="page">★ Favorites</a>
 	<a href="{{ url_for('home', q=search if search else none, tag=tag if tag else none) }}" class="filter-pill">All</a>
 	{% else %}
-	<a href="{{ url_for('home', favorites='1', q=search if search else none, tag=tag if tag else none) }}" class="filter-pill">★ Favorites</a>
-	<a href="{{ url_for('home', q=search if search else none, tag=tag if tag else none) }}" class="filter-pill active">All</a>
+	<a href="{{ url_for('home', favorites='1', q=search if search else none, tag=tag if tag else none) }}"
+		class="filter-pill">★ Favorites</a>
+	<a href="{{ url_for('home', q=search if search else none, tag=tag if tag else none) }}"
+		class="filter-pill active">All</a>
 	{% endif %}
 
 	{% if tag %}
-	<a href="{{ url_for('home', q=search if search else none, favorites='1' if favorites_only else none) }}" class="filter-tag">{{ tag }} &times;</a>
+	<a href="{{ url_for('home', q=search if search else none, favorites='1' if favorites_only else none) }}"
+		class="filter-tag">{{ tag }} &times;</a>
 	{% endif %}
 
 	<a href="{{ url_for('home') }}" class="filter-clear">&times; Clear</a>
-	<span class="filter-count">{{ recipes|length }} recipe{{ 's' if recipes|length != 1 }}</span>
+	<span class="filter-count" data-total="{{ pagination.total }}">{{ pagination.total }} recipe{{ 's' if
+		pagination.total != 1 }}</span>
 </div>
 {% endif %}
 
-<div class="view-controls">
-	<button class="view-btn active" id="view-film">🎞️ Film</button>
-	<button class="view-btn" id="view-list">☰ List</button>
+{% if recipes %}
+<div class="view-controls" id="recipe-view-controls" role="group" aria-label="Recipe view" hidden>
+	<button type="button" class="view-btn active" id="view-deck" aria-controls="recipe-deck"
+		aria-pressed="true">Deck</button>
+	<button type="button" class="view-btn" id="view-list" aria-controls="recipe-list" aria-pressed="false">List</button>
 </div>
 
-<div class="filmstrip" id="filmstrip">
-	<div class="film-track" id="film-track">
+<section class="recipe-deck" id="recipe-deck" aria-label="Recipe deck" hidden>
+	<div class="deck-stack" id="deck-stack">
 		{% for recipe in recipes %}
-		<a class="flashcard" id="recipe-{{ recipe.id }}" href="{{ url_for('view_recipe', recipe_id=recipe.id) }}">
+		<a class="flashcard" id="recipe-{{ recipe.id }}" draggable="false"
+			href="{{ url_for('view_recipe', recipe_id=recipe.id) }}">
 			<div class="flashcard-media">
 				{% if recipe.image_filename %}
-				<img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}">
-				{% else %}
-				<div class="flashcard-placeholder">🍽️</div>
-				{% endif %}
-				{% if recipe.is_favorite %}<span class="flashcard-fav">★</span>{% endif %}
+					<img src="{{ image_url(recipe.image_filename, thumbnail=true) }}" alt="" loading="lazy"
+						draggable="false" data-recipe-photo>
+					<div class="flashcard-placeholder photo-unavailable" hidden>Photo unavailable</div>
+					{% else %}
+					<div class="flashcard-placeholder">🍽️</div>
+					{% endif %}
+					{% if recipe.is_favorite %}<span class="flashcard-fav">★</span>{% endif %}
 			</div>
 			<div class="flashcard-body">
 				<h3 class="flashcard-title">{{ recipe.title }}</h3>
@@ -61,15 +79,18 @@
 		</a>
 		{% endfor %}
 	</div>
-</div>
 
-{% if recipes|length > 1 %}
-<div class="film-controls">
-	<button class="film-btn" id="film-prev" aria-label="Previous">&larr;</button>
-	<span class="film-dots" id="film-dots"></span>
-	<button class="film-btn" id="film-next" aria-label="Next">&rarr;</button>
-</div>
-{% endif %}
+	<div class="deck-controls" id="deck-controls" hidden>
+		<button type="button" class="deck-arrow" id="deck-prev" aria-label="Previous recipe">&larr;</button>
+		<p class="deck-progress">
+			<span id="deck-position" aria-hidden="true"></span>
+			<span class="visually-hidden" id="deck-announcement" role="status"></span>
+		</p>
+		<button type="button" class="deck-arrow" id="deck-next" aria-label="Next recipe">&rarr;</button>
+	</div>
+</section>
+
+<script defer src="{{ url_for('static', filename='deck.js') }}"></script>
 
 <ul id="recipe-list">
 	{% for recipe in recipes %}
@@ -82,141 +103,40 @@
 		{% for t in recipe.tags %}
 		<a href="{{ url_for('home', tag=t.name) }}" class="tag">{{ t.name }}</a>
 		{% endfor %}
-		<button class="delete-btn" data-id="{{ recipe.id }}">✕</button>
+		<button class="delete-btn" data-id="{{ recipe.id }}"
+			data-url="{{ url_for('api_delete_recipe', recipe_id=recipe.id) }}"
+			aria-label="Delete {{ recipe.title }}">✕</button>
 	</li>
 	{% endfor %}
 </ul>
+{% else %}
+<div class="empty-collection">
+	{% if search or favorites_only or tag %}
+	<p>No recipes match this view.</p>
+	<a href="{{ url_for('home') }}">Browse all recipes</a>
+	{% else %}
+	<p>Your recipe box is empty.</p>
+	<a href="{{ url_for('add_recipe') }}">Add your first recipe</a>
+	{% endif %}
+</div>
+{% endif %}
 
 {% if pagination.pages > 1 %}
 <nav class="pagination">
 	{% if pagination.has_prev %}
-	<a href="{{ url_for('home', page=pagination.prev_num, q=search if search else none, tag=tag if tag else none, favorites='1' if favorites_only else none) }}">&larr; Previous</a>
+	<a
+		href="{{ url_for('home', page=pagination.prev_num, q=search if search else none, tag=tag if tag else none, favorites='1' if favorites_only else none) }}">&larr;
+		Previous</a>
 	{% endif %}
 
 	<span class="page-info">Page {{ pagination.page }} of {{ pagination.pages }}</span>
 
 	{% if pagination.has_next %}
-	<a href="{{ url_for('home', page=pagination.next_num, q=search if search else none, tag=tag if tag else none, favorites='1' if favorites_only else none) }}">Next &rarr;</a>
+	<a
+		href="{{ url_for('home', page=pagination.next_num, q=search if search else none, tag=tag if tag else none, favorites='1' if favorites_only else none) }}">Next
+		&rarr;</a>
 	{% endif %}
 </nav>
 {% endif %}
 
-<script>
-	function refreshFilmControls() {
-		const track = document.getElementById("film-track");
-		if (!track) return;
-		const overview = document.querySelectorAll(".flashcard").length;
-		const perView = Math.max(1, Math.round(track.clientWidth / 240));
-		const pages = Math.max(1, Math.ceil(overview / perView));
-		const dots = document.getElementById("film-dots");
-		if (dots) {
-			dots.innerHTML = "";
-			for (let i = 0; i < pages; i++) {
-				const d = document.createElement("span");
-				d.className = "film-dot";
-				d.dataset.index = i;
-				dots.appendChild(d);
-			}
-		}
-	}
-
-	document.addEventListener("DOMContentLoaded", () => {
-		refreshFilmControls();
-		const track = document.getElementById("film-track");
-		const next = document.getElementById("film-next");
-		const prev = document.getElementById("film-prev");
-		const dots = document.getElementById("film-dots");
-		if (!track) return;
-
-		const step = () => Math.max(240, Math.round(track.clientWidth * 0.8));
-
-		const updateDots = () => {
-			if (!dots || !dots.children.length) return;
-			const index = Math.min(
-				dots.children.length - 1,
-				Math.round(track.scrollLeft / step())
-			);
-			[...dots.children].forEach(d => d.classList.toggle("active",
-				Number(d.dataset.index) === index));
-		};
-
-		if (next) next.addEventListener("click", () => {
-			track.scrollBy({ left: step(), behavior: "smooth" });
-		});
-		if (prev) prev.addEventListener("click", () => {
-			track.scrollBy({ left: -step(), behavior: "smooth" });
-		});
-		if (dots) dots.addEventListener("click", (e) => {
-			const d = e.target.closest(".film-dot");
-			if (!d) return;
-			track.scrollTo({ left: Number(d.dataset.index) * step(), behavior: "smooth" });
-		});
-
-		let raf;
-		track.addEventListener("scroll", () => {
-			if (raf) return;
-			raf = requestAnimationFrame(() => { raf = null; updateDots(); });
-		});
-		window.addEventListener("resize", refreshFilmControls);
-	});
-
-	document.addEventListener("DOMContentLoaded", () => {
-		const filmBtn = document.getElementById("view-film");
-		const listBtn = document.getElementById("view-list");
-		const film = document.getElementById("filmstrip");
-		const list = document.getElementById("recipe-list");
-		const filmControls = document.querySelector(".film-controls");
-		const viewControls = document.querySelector(".view-controls");
-		if (!film || !list || !filmBtn || !listBtn) return;
-
-		const setView = (mode) => {
-			const filmMode = mode === "film";
-			film.style.display = filmMode ? "block" : "none";
-			list.style.display = filmMode ? "none" : "block";
-			if (filmControls) filmControls.style.display = filmMode ? "flex" : "none";
-			filmBtn.classList.toggle("active", filmMode);
-			listBtn.classList.toggle("active", !filmMode);
-			if (filmMode) refreshFilmControls();
-		};
-
-		filmBtn.addEventListener("click", () => setView("film"));
-		listBtn.addEventListener("click", () => setView("list"));
-	});
-
-	document.addEventListener("DOMContentLoaded", () => {
-		const track = document.getElementById("film-track");
-		if (!track) return;
-		let isDown = false, dragged = false, startX = 0, startLeft = 0;
-
-		track.addEventListener("mousedown", (e) => {
-			if (e.target.closest("a")) return;
-			isDown = true;
-			dragged = false;
-			startX = e.pageX;
-			startLeft = track.scrollLeft;
-		});
-
-		window.addEventListener("mouseup", () => {
-			isDown = false;
-			track.classList.remove("dragging");
-			setTimeout(() => { dragged = false; }, 50);
-		});
-
-		track.addEventListener("mousemove", (e) => {
-			if (!isDown) return;
-			const x = e.pageX - startX;
-			if (!dragged && Math.abs(x) < 5) return;
-			dragged = true;
-			track.classList.add("dragging");
-			track.scrollLeft = startLeft - x;
-		});
-
-		track.addEventListener("click", (e) => {
-			if (dragged) {
-				e.preventDefault();
-				e.stopPropagation();
-			}
-		}, true);
-	});
-</script>
 {% endblock %}

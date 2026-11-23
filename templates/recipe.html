@@ -5,221 +5,179 @@
 <a href="{{ url_for('home') }}" class="back-link">&larr; Back to all recipes</a>
 
 {% if recipe.image_filename %}
-<img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}"
-    class="recipe-photo">
-{% endif %}
-
-<div class="recipe-card">
-    <h1>
-        {% if recipe.is_favorite %}<span class="star">★</span>{% endif %}
-        {{ recipe.title }}
-    </h1>
-
-    {% if recipe.tags %}
-    <div class="tags">
-        {% for tag in recipe.tags %}
-        <a href="{{ url_for('home', tag=tag.name) }}" class="tag">{{ tag.name }}</a>
-        {% endfor %}
-    </div>
+    <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}" class="recipe-photo" data-recipe-photo>
+    <div class="photo-unavailable" hidden>Photo unavailable</div>
     {% endif %}
 
-    <div class="rating">
-        <div class="rating-display">
-            <span class="single-star">★</span>
-            <span class="rating-value">
-                {% if recipe.rating %}{{ recipe.rating }} / 5{% else %}Not rated yet{% endif %}
-            </span>
+    <div class="recipe-card">
+        <h1>
+            {% if recipe.is_favorite %}<span class="star">★</span>{% endif %}
+            {{ recipe.title }}
+        </h1>
+
+        {% if recipe.tags %}
+        <div class="tags">
+            {% for tag in recipe.tags %}
+            <a href="{{ url_for('home', tag=tag.name) }}" class="tag">{{ tag.name }}</a>
+            {% endfor %}
         </div>
-        <form method="POST" action="{{ url_for('rate_recipe', recipe_id=recipe.id) }}" class="rating-form">
-            <label for="rating-select">Rate:</label>
-            <select name="rating" id="rating-select">
-                <option value="" disabled {{ 'selected' if not recipe.rating }}>Choose&hellip;</option>
-                {% for i in range(1, 6) %}
-                <option value="{{ i }}" {{ 'selected' if recipe.rating == i }}>{{ i }} star{{ '' if i == 1 else 's' }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="rate-btn">Rate</button>
-        </form>
-    </div>
-
-    <div id="origin-section">
-        {% if recipe.origin %}
-        <p id="origin-text">{{ recipe.origin }}</p>
-        {% else %}
-        <button id="origin-btn" data-id="{{ recipe.id }}">✨ Where does this dish come from?</button>
-        <p id="origin-text"></p>
         {% endif %}
-    </div>
 
-    <h2>Ingredients</h2>
-    <p>
-        Servings:
-        <input type="number" id="servings-input" min="1" value="{{ recipe.servings }}">
-        <span id="servings-note">(original recipe: {{ recipe.servings }})</span>
-    </p>
-
-    <ul id="ingredient-list">
-        {% for ing in recipe.ingredient_lines %}
-        <li data-base-amount="{{ ing.amount }}" data-unit="{{ ing.unit or '' }}" data-name="{{ ing.name }}">
-            <span class="ing-amount">{{ ing.amount|round(2) }}</span>
-            <span class="ing-unit">{{ ing.unit or '' }}</span>
-            <span class="ing-name">{{ ing.name }}</span>
-        </li>
-        {% endfor %}
-    </ul>
-
-    <div id="nutrition-section">
-        {% if recipe.calories is not none %}
-        <div class="nutrition-facts">
-            <strong>Nutrition (per serving, estimated):</strong>
-            <ul id="nutrition-values"
-                data-calories="{{ recipe.calories }}"
-                data-protein="{{ recipe.protein_g }}"
-                data-carbs="{{ recipe.carbs_g }}"
-                data-fat="{{ recipe.fat_g }}">
-                <li><span class="nutrition-value" data-nut="calories">{{ recipe.calories }}</span> calories</li>
-                <li><span class="nutrition-value" data-nut="protein">{{ recipe.protein_g }}</span>g protein</li>
-                <li><span class="nutrition-value" data-nut="carbs">{{ recipe.carbs_g }}</span>g carbs</li>
-                <li><span class="nutrition-value" data-nut="fat">{{ recipe.fat_g }}</span>g fat</li>
-            </ul>
+        <div class="rating">
+            <div class="rating-display">
+                <span class="single-star">★</span>
+                <span class="rating-value">
+                    {% if recipe.rating %}{{ recipe.rating }} / 5{% else %}Not rated yet{% endif %}
+                </span>
+            </div>
+            <form method="POST" action="{{ url_for('rate_recipe', recipe_id=recipe.id) }}" class="rating-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label for="rating-select">Rate:</label>
+                <select name="rating" id="rating-select">
+                    <option value="" disabled {{ 'selected' if not recipe.rating }}>Choose&hellip;</option>
+                    {% for i in range(1, 6) %}
+                    <option value="{{ i }}" {{ 'selected' if recipe.rating==i }}>{{ i }} star{{ '' if i == 1 else 's' }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="rate-btn">Rate</button>
+            </form>
         </div>
-        {% else %}
-        <button id="nutrition-btn" data-id="{{ recipe.id }}">🥗 Estimate nutrition</button>
-        <p id="nutrition-error"></p>
-        {% endif %}
+
+        <div id="origin-section">
+            {% if recipe.origin and recipe.origin != "Unknown origin." %}
+            <p id="origin-text">{{ recipe.origin }}</p>
+            {% else %}
+            <button id="origin-btn" data-url="{{ url_for('api_recipe_origin', recipe_id=recipe.id) }}">✨ Where does this
+                dish come from?</button>
+            <p id="origin-text" role="status"></p>
+            {% endif %}
+        </div>
+
+        <h2>Ingredients</h2>
+        <p>
+            <label for="servings-input">Servings:</label>
+            <input type="number" id="servings-input" min="1" value="{{ recipe.servings }}">
+            <span id="servings-note">(original recipe: {{ recipe.servings }})</span>
+        </p>
+
+        <ul id="ingredient-list">
+            {% for ing in recipe.ingredient_lines %}
+            <li data-base-amount="{{ ing.amount }}" data-unit="{{ ing.unit or '' }}" data-name="{{ ing.name }}">
+                <span class="ing-amount">{{ ing.amount|round(2) }}</span>
+                <span class="ing-unit">{{ ing.unit or '' }}</span>
+                <span class="ing-name">{{ ing.name }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <div id="nutrition-section">
+            <div class="nutrition-facts" id="nutrition-facts" {% if recipe.calories is none %}hidden{% endif %}>
+                <strong>Nutrition (estimated per serving)</strong>
+                <ul>
+                    <li><span data-nutrition="calories">{{ recipe.calories or 0 }}</span> calories</li>
+                    <li><span data-nutrition="protein_g">{{ recipe.protein_g or 0 }}</span> g protein</li>
+                    <li><span data-nutrition="carbs_g">{{ recipe.carbs_g or 0 }}</span> g carbs</li>
+                    <li><span data-nutrition="fat_g">{{ recipe.fat_g or 0 }}</span> g fat</li>
+                </ul>
+            </div>
+            {% if recipe.calories is none and recipe.ingredient_lines %}
+            <button id="nutrition-btn" data-url="{{ url_for('api_nutrition', recipe_id=recipe.id) }}">Estimate
+                nutrition</button>
+            <p id="nutrition-error" role="status"></p>
+            {% endif %}
+        </div>
+
+        <h2>Instructions</h2>
+        <p class="recipe-instructions">{{ recipe.instructions }}</p>
+
+        <div class="actions-bar">
+            <a href="{{ url_for('edit_recipe', recipe_id=recipe.id) }}" class="action-btn edit-btn">Edit</a>
+            <form method="POST" action="{{ url_for('toggle_favorite', recipe_id=recipe.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="action-btn favorite-btn">
+                    {{ "★ Favorited" if recipe.is_favorite else "☆ Add to Favorites" }}
+                </button>
+            </form>
+            <form method="POST" action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}" style="display:inline;"
+                onsubmit="return confirm('Delete this recipe?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="action-btn delete-action-btn">Delete</button>
+            </form>
+        </div>
     </div>
 
-    <h2>Instructions</h2>
-    <p>{{ recipe.instructions }}</p>
+    <script>
+        const originBtn = document.getElementById("origin-btn");
+        if (originBtn) {
+            originBtn.addEventListener("click", async () => {
+                const textEl = document.getElementById("origin-text");
 
-    <div class="actions-bar">
-        <a href="{{ url_for('edit_recipe', recipe_id=recipe.id) }}" class="action-btn edit-btn">Edit</a>
-        <form method="POST" action="{{ url_for('toggle_favorite', recipe_id=recipe.id) }}" style="display:inline;">
-            <button type="submit" class="action-btn favorite-btn">
-                {{ "★ Favorited" if recipe.is_favorite else "☆ Add to Favorites" }}
-            </button>
-        </form>
-        <form method="POST" action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}" style="display:inline;" onsubmit="return confirm('Delete this recipe?');">
-            <button type="submit" class="action-btn delete-action-btn">Delete</button>
-        </form>
-    </div>
-</div>
+                originBtn.disabled = true;
+                originBtn.textContent = "Thinking...";
 
-<script>
-    const originBtn = document.getElementById("origin-btn");
-    if (originBtn) {
-        originBtn.addEventListener("click", async () => {
-            const recipeId = originBtn.dataset.id;
-            const textEl = document.getElementById("origin-text");
+                try {
+                    const response = await fetch(originBtn.dataset.url, { method: "POST", headers: csrfHeaders });
+                    const data = await response.json();
 
-            originBtn.disabled = true;
-            originBtn.textContent = "Thinking...";
-
-            try {
-                const response = await fetch(`/api/origin/${recipeId}`, { method: "POST" });
-                const data = await response.json();
-
-                if (data.success) {
-                    textEl.textContent = data.origin;
-                    originBtn.style.display = "none";
-                } else {
-                    textEl.textContent = "Couldn't fetch that right now. Try again later.";
+                    if (response.ok && data.success) {
+                        textEl.textContent = data.origin;
+                        originBtn.style.display = "none";
+                    } else {
+                        textEl.textContent = data.error || "Could not fetch the origin. Please try again.";
+                    }
+                } catch (err) {
+                    textEl.textContent = "Something went wrong.";
                 }
-            } catch (err) {
-                textEl.textContent = "Something went wrong.";
-            }
 
-            originBtn.disabled = false;
-            originBtn.textContent = "✨ Where does this dish come from?";
-        });
-    }
-</script>
+                originBtn.disabled = false;
+                originBtn.textContent = "✨ Where does this dish come from?";
+            });
+        }
+    </script>
 
-<script>
-    const baseServings = {{ recipe.servings }};
-    const servingsInput = document.getElementById("servings-input");
-    const servingsNote = document.getElementById("servings-note");
+    <script>
+        const baseServings = Math.max(1, {{ recipe.servings }});
+        const servingsInput = document.getElementById("servings-input");
 
-    const formatNutrition = (value) => {
-        if (value === null || value === undefined || isNaN(value)) return "";
-        return Math.round(value);
-    };
-
-    const updateNutritionScale = (scale) => {
-        const valuesEl = document.getElementById("nutrition-values");
-        if (!valuesEl) return;
-
-        const bases = {
-            calories: parseFloat(valuesEl.dataset.calories),
-            protein: parseFloat(valuesEl.dataset.protein),
-            carbs: parseFloat(valuesEl.dataset.carbs),
-            fat: parseFloat(valuesEl.dataset.fat),
-        };
-
-        document.querySelectorAll(".nutrition-value").forEach(span => {
-            const key = span.dataset.nut;
-            span.textContent = formatNutrition(bases[key] * scale);
-        });
-    };
-
-    servingsInput.addEventListener("input", () => {
-        const newServings = parseFloat(servingsInput.value) || baseServings;
-        const scale = newServings / baseServings;
-
-        document.querySelectorAll("#ingredient-list li").forEach(li => {
-            const baseAmount = parseFloat(li.dataset.baseAmount);
-            const scaledAmount = baseAmount * scale;
-            li.querySelector(".ing-amount").textContent = scaledAmount.toFixed(2).replace(/\.00$/, "");
+        servingsInput.addEventListener("input", () => {
+            const servings = servingsInput.valueAsNumber;
+            if (!Number.isInteger(servings) || servings < 1) return;
+            document.querySelectorAll("#ingredient-list li").forEach(item => {
+                const amount = Number(item.dataset.baseAmount) * servings / baseServings;
+                item.querySelector(".ing-amount").textContent = Number(amount.toFixed(2));
+            });
         });
 
-        updateNutritionScale(scale);
-        servingsNote.textContent = `(original recipe: ${baseServings})`;
-    });
-</script>
-
-<script>
-    const nutritionBtn = document.getElementById("nutrition-btn");
-    if (nutritionBtn) {
-        nutritionBtn.addEventListener("click", async () => {
-            const recipeId = nutritionBtn.dataset.id;
-            const errorEl = document.getElementById("nutrition-error");
-
-            nutritionBtn.disabled = true;
-            nutritionBtn.textContent = "Estimating...";
-
-            try {
-                const response = await fetch(`/api/nutrition/${recipeId}`, { method: "POST" });
-                const data = await response.json();
-
-                if (data.success) {
-                    document.getElementById("nutrition-section").innerHTML = `
-                    <div class="nutrition-facts">
-                        <strong>Nutrition (per serving, estimated):</strong>
-                        <ul id="nutrition-values"
-                            data-calories="${data.calories}"
-                            data-protein="${data.protein_g}"
-                            data-carbs="${data.carbs_g}"
-                            data-fat="${data.fat_g}">
-                            <li><span class="nutrition-value" data-nut="calories">${data.calories}</span> calories</li>
-                            <li><span class="nutrition-value" data-nut="protein">${data.protein_g}</span>g protein</li>
-                            <li><span class="nutrition-value" data-nut="carbs">${data.carbs_g}</span>g carbs</li>
-                            <li><span class="nutrition-value" data-nut="fat">${data.fat_g}</span>g fat</li>
-                        </ul>
-                    </div>
-                `;
-                    const currentServings = parseFloat(document.getElementById("servings-input").value) || baseServings;
-                    updateNutritionScale(currentServings / baseServings);
-                } else {
-                    errorEl.textContent = data.error || "Something went wrong.";
+        const nutritionBtn = document.getElementById("nutrition-btn");
+        if (nutritionBtn) {
+            nutritionBtn.addEventListener("click", async () => {
+                const errorEl = document.getElementById("nutrition-error");
+                errorEl.textContent = "";
+                nutritionBtn.disabled = true;
+                nutritionBtn.textContent = "Estimating...";
+                try {
+                    const response = await fetch(nutritionBtn.dataset.url, {
+                        method: "POST", headers: csrfHeaders,
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) {
+                        errorEl.textContent = data.error || "Could not estimate nutrition.";
+                        return;
+                    }
+                    const facts = document.getElementById("nutrition-facts");
+                    facts.querySelectorAll("[data-nutrition]").forEach(value => {
+                        value.textContent = data[value.dataset.nutrition];
+                    });
+                    facts.hidden = false;
+                    nutritionBtn.hidden = true;
+                } catch {
+                    errorEl.textContent ||= "Could not estimate nutrition. Please try again.";
+                } finally {
                     nutritionBtn.disabled = false;
-                    nutritionBtn.textContent = "🥗 Estimate nutrition";
+                    nutritionBtn.textContent = "Estimate nutrition";
                 }
-            } catch (err) {
-                errorEl.textContent = "Something went wrong.";
-                nutritionBtn.disabled = false;
-                nutritionBtn.textContent = "🥗 Estimate nutrition";
-            }
-        });
-    }
-</script>
-{% endblock %}
+            });
+        }
+    </script>
+    {% endblock %}

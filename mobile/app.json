@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Recipe Box",
+    "slug": "recipe-box",
+    "version": "1.0.0",
+    "orientation": "default",
+    "scheme": "recipebox",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.recipebox.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take a photo for your recipe.",
+        "NSPhotoLibraryUsageDescription": "Choose a photo for your recipe."
+      }
+    },
+    "android": {
+      "package": "com.recipebox.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#304d3b"
+      }
+    }
+  }
+}

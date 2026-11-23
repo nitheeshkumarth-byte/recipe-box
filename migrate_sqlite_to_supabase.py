@@ -1,12 +1,13 @@
 import os
 import sqlite3
+from pathlib import Path
 import psycopg2
 from psycopg2 import sql
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SQLITE_PATH = "instance/recipes.db"
+SQLITE_PATH = Path(__file__).resolve().parent / "instance" / "recipes.db"
 
 TABLES = [
     "tag",
@@ -28,7 +29,7 @@ database_url = database_url.replace(
     1
 )
 
-sqlite_db = sqlite3.connect(SQLITE_PATH)
+sqlite_db = sqlite3.connect(f"{SQLITE_PATH.as_uri()}?mode=ro", uri=True)
 sqlite_db.row_factory = sqlite3.Row
 
 pg_db = psycopg2.connect(database_url)
@@ -80,22 +81,23 @@ try:
                 values = []
 
                 for row in rows:
-                        record = []
-
-                        for column in columns:
-                            value = row[column]
-
-        # Convert SQLite integer Boolean to Python Boolean
-                            if table == "recipe" and column == "is_favorite":
-                                value = bool(value) if value is not None else False
-
-                            record.append(value)
-
-                values.append(tuple(record))
+                    record = []
+                    for column in columns:
+                        value = row[column]
+                        if table == "recipe" and column == "is_favorite":
+                            value = bool(value)
+                        record.append(value)
+                    values.append(tuple(record))
 
                 cursor.executemany(insert_query, values)
 
-                print(f"{table}: {len(rows)} rows transferred")
+                cursor.execute(
+                    sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))
+                )
+                transferred = cursor.fetchone()[0]
+                if transferred != len(rows):
+                    raise RuntimeError(f"{table}: expected {len(rows)} rows, found {transferred}")
+                print(f"{table}: {transferred} rows transferred")
 
             # Reset PostgreSQL ID sequences
             for table in ["recipe", "recipe_ingredient", "tag"]:

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: recipe-box-staging
+    runtime: python
+    plan: 0.5c-512mb
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: bash scripts/migrate.sh
+    startCommand: bash scripts/start_web.sh
+    healthCheckPath: /readyz
+    autoDeployTrigger: "off"
+    envVars:
+      - fromGroup: recipe-box-staging

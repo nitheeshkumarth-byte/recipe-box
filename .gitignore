@@ -1,5 +1,10 @@
-# Node dependencies
+# Node dependencies and build output
 node_modules/
+.expo/
+dist-android/
+dist-ios/
+dist/
+build/
 
 # Python
 __pycache__/
@@ -10,11 +15,11 @@ venv/
 # Environment variables
 .env
 .env.*
+!.env.example
 
-# Database files
-instance/*.db
-instance/*.sqlite
-instance/*.sqlite3
+# Local recipe data and uploads
+/instance/
+/static/uploads/
 
 # Logs
 *.log
@@ -22,11 +27,3 @@ instance/*.sqlite3
 # IDE
 .vscode/
 .idea/
-
-# Build files
-dist/
-build/
-
-node_modules/
-.env
-__pycache__/

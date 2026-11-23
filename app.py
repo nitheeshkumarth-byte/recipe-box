@@ -1,132 +1,484 @@
+import argparse
+import hmac
+import math
 import os
+import secrets
+from contextlib import closing
+from functools import lru_cache
+from itertools import zip_longest
+from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import quote
+
 import boto3
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from botocore.exceptions import BotoCoreError, ClientError
+from boto3.exceptions import Boto3Error
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_migrate import Migrate
+from flask import (
+    Flask, Response, abort, flash, g, jsonify, redirect, render_template, request,
+    send_from_directory, session, url_for,
+)
+from flask_migrate import Migrate, upgrade
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_
+from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from model import db, Recipe, Tag, RecipeIngredient
-from ai_helper import get_recipe_origin, get_nutrition_estimate, get_recipe_from_web
+from ai_helper import (
+    AIUnavailable, get_recipe_origin, get_nutrition_estimate, get_recipe_suggestion,
+)
+from chef_memory import cache_key, load_memory, remember
+from chef_rag import answer_question
+from chef_vectors import register_vector_commands
+from recipe_access import audit, recipe_query, register_access_commands
+from recipe_auth import configure_auth, signed_in_user
+from recipe_chat import answer_recipe_question
+from pwa import pwa_bp
+from shared_cache import CacheUnavailable, allow_ai_request
 from swagger_docs import swagger_bp
 
 load_dotenv()
 
+launch_args = None
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run Recipe Box on this computer.")
+    parser.add_argument("--configured-services", action="store_true", help="Use the services configured in .env.")
+    parser.add_argument("--port", type=int, default=5000)
+    launch_args = parser.parse_args()
+
 app = Flask(__name__)
-database_url = os.environ.get("DATABASE_URL")
+ON_RENDER = os.getenv("RENDER") == "true"
+local_development = not ON_RENDER and (
+    not launch_args.configured_services if launch_args is not None else os.getenv("RECIPE_BOX_LOCAL") == "1"
+)
+app.config["LOCAL_DEVELOPMENT"] = local_development
+database_url = None if local_development else os.getenv("DATABASE_URL")
 
 if database_url:
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///recipes.db"
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-fallback-key-change-me")
+ACCESS_PASSWORD = None if local_development else os.getenv("RECIPE_BOX_PASSWORD")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
+app.config["SESSION_COOKIE_SECURE"] = ON_RENDER
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Photos live in Supabase Storage (S3-compatible); Render's disk is wiped on deploy.
-S3_BUCKET = os.environ.get("S3_BUCKET", "uploads")
-S3_PREFIX = os.environ.get("S3_PREFIX", "")  # e.g. "uploads/" if photos sit in a folder
-IMAGE_BASE_URL = os.environ.get("IMAGE_BASE_URL", "").rstrip("/")
-s3 = boto3.client(
-    "s3",
-    endpoint_url=os.environ.get("S3_ENDPOINT"),
-    region_name=os.environ.get("S3_REGION"),
-    aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
-    aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
-)
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+S3_BUCKET = os.getenv("S3_BUCKET", "uploads")
+S3_PREFIX = os.getenv("S3_PREFIX", "").strip("/")
+if S3_PREFIX:
+    S3_PREFIX += "/"
+IMAGE_BASE_URL = "" if local_development else os.getenv("IMAGE_BASE_URL", "").rstrip("/")
+S3_ENDPOINT = None if local_development else os.getenv("S3_ENDPOINT")
+LOCAL_UPLOADS = Path(app.instance_path) / "uploads"
+MAX_FILE_SIZE = 5 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE + 512 * 1024
 
-app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
+IMAGE_TYPES = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "gif": "image/gif", "webp": "image/webp",
+}
+
+
+@lru_cache(maxsize=1)
+def storage_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=S3_ENDPOINT,
+        region_name=os.getenv("S3_REGION"),
+        aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+        aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+    )
 
 db.init_app(app)
 migrate = Migrate(app, db)
 app.register_blueprint(swagger_bp)
+app.register_blueprint(pwa_bp)
+configure_auth(app)
+register_access_commands(app)
+register_vector_commands(app)
 
 RECIPES_PER_PAGE = 9
 
 
-# --- Helpers -------------------------------------------------------------
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
+    return session["csrf_token"]
 
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-def save_uploaded_image(file):
-    """Validates and saves an uploaded image file. Returns the saved
-    filename, or None if no file was provided, or the string "INVALID"
-    if a file was given but rejected (invalid type / too large)."""
-    if not file or file.filename == "":
+@app.before_request
+def protect_recipe_box():
+    if request.endpoint in {"health", "ready", "pwa.manifest", "pwa.service_worker", "pwa.offline"}:
         return None
+    if request.endpoint == "static" and not request.view_args["filename"].startswith("uploads/"):
+        return None
+    auth_route = request.blueprint == "auth"
+    if app.config["ACCOUNT_AUTH"]:
+        g.recipe_user_id = signed_in_user()
+        if not auth_route and not g.recipe_user_id:
+            if request.path.startswith("/api/"):
+                return jsonify(success=False, error="Sign in to continue."), 401
+            return redirect(url_for("auth.sign_in"))
+    elif ACCESS_PASSWORD:
+        credentials = request.authorization
+        if (
+            credentials is None or credentials.type != "basic"
+            or credentials.username != "recipebox"
+            or not hmac.compare_digest(
+                (credentials.password or "").encode(), ACCESS_PASSWORD.encode()
+            )
+        ):
+            return (
+                "Recipe Box sign-in required.", 401,
+                {"WWW-Authenticate": 'Basic realm="Recipe Box", charset="UTF-8"'},
+            )
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return None
+    if ON_RENDER and not app.config["ACCOUNT_AUTH"] and (not ACCESS_PASSWORD or not os.getenv("SECRET_KEY")):
+        abort(503, "Configure RECIPE_BOX_PASSWORD and SECRET_KEY to enable writes.")
+    expected = session.get("csrf_token")
+    supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token", "")
+    if not expected or not hmac.compare_digest(expected.encode(), supplied.encode()):
+        if request.path.startswith("/api/"):
+            return jsonify(success=False, error="Refresh the page and try again."), 400
+        abort(400, "The form expired. Refresh the page and try again.")
+    return None
 
-    if not allowed_file(file.filename):
-        flash("Image must be a png, jpg, jpeg, gif, or webp file.", "error")
-        return "INVALID"
 
-    filename = secure_filename(file.filename)
-    unique_filename = f"{os.urandom(8).hex()}_{filename}"
-
-    try:
-        s3.upload_fileobj(
-            file, S3_BUCKET, S3_PREFIX + unique_filename,
-            ExtraArgs={"ContentType": file.mimetype or "application/octet-stream"},
-        )
-    except (BotoCoreError, ClientError):
-        flash("Could not upload the image. Please try again.", "error")
-        return "INVALID"
-
-    return unique_filename
+def storage_key(filename):
+    return S3_PREFIX + filename
 
 
-def delete_image_file(filename):
-    """Deletes an uploaded image from storage, ignoring failures."""
-    if not filename:
-        return
-    try:
-        s3.delete_object(Bucket=S3_BUCKET, Key=S3_PREFIX + filename)
-    except (BotoCoreError, ClientError):
-        pass
+def image_url(filename, thumbnail=False):
+    return url_for("recipe_image", filename=filename, size="thumb" if thumbnail else None)
+
+
+def thumbnail_name(filename):
+    return f"thumbs/{filename}.webp"
 
 
 @app.context_processor
-def image_helpers():
-    return {"image_url": lambda filename: f"{IMAGE_BASE_URL}/{S3_PREFIX}{filename}"}
-
-def get_or_create_tags(tag_string):
-    """Takes 'dinner, quick, veg' and returns a list of Tag objects,
-    reusing existing tags and creating new ones as needed."""
-    tag_names = [t.strip() for t in tag_string.split(",") if t.strip()]
-    tags = []
-    for name in tag_names:
-        tag = Tag.query.filter_by(name=name).first()
-        if tag is None:
-            tag = Tag(name=name)
-            db.session.add(tag)
-        tags.append(tag)
-    return tags
+def template_helpers():
+    return {"image_url": image_url, "csrf_token": csrf_token}
 
 
-def parse_ingredients_from_form():
-    """Reads parallel lists of amount/unit/name submitted from the form
-    and returns a list of RecipeIngredient objects (not yet saved)."""
-    amounts = request.form.getlist("ing_amount")
-    units = request.form.getlist("ing_unit")
-    names = request.form.getlist("ing_name")
+@app.get("/photos/<filename>")
+def recipe_image(filename):
+    extension = Path(filename).suffix.lower().lstrip(".")
+    if extension not in IMAGE_TYPES or "\\" in filename or Path(filename).name != filename:
+        abort(404)
+
+    owner = g.get("recipe_user_id")
+    if owner and recipe_query().filter_by(image_filename=filename).first() is None:
+        abort(404)
+    for directory in (LOCAL_UPLOADS, Path(app.static_folder) / "uploads"):
+        if (directory / filename).is_file():
+            response = send_from_directory(directory, filename, mimetype=IMAGE_TYPES[extension])
+            if owner:
+                response.cache_control.private = True
+            return response
+
+    if not (S3_ENDPOINT or IMAGE_BASE_URL):
+        abort(404)
+    if not owner and recipe_query().filter_by(image_filename=filename).first() is None:
+        abort(404)
+    db.session.rollback()
+
+    if S3_ENDPOINT:
+        try:
+            candidates = (thumbnail_name(filename), filename) if request.args.get("size") == "thumb" else (filename,)
+            if owner and os.getenv("RECIPE_SIGNED_PHOTOS") == "1":
+                for candidate in candidates:
+                    signed = signed_photo_url(candidate)
+                    if signed:
+                        return redirect(signed)
+            photo = next((found for candidate in candidates if (found := read_stored_photo(candidate))), None)
+        except (BotoCoreError, ClientError, Boto3Error) as error:
+            app.logger.warning("Recipe photo lookup failed (%s)", type(error).__name__)
+            if owner or not IMAGE_BASE_URL:
+                abort(503)
+        else:
+            if photo is not None:
+                content_type = image_type(photo[:12])
+                if len(photo) > MAX_FILE_SIZE or not content_type:
+                    abort(404)
+                response = Response(photo, mimetype=content_type)
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.cache_control.private = True
+                response.cache_control.max_age = 600
+                return response
+
+    if IMAGE_BASE_URL and not owner:
+        return redirect(f"{IMAGE_BASE_URL}/{quote(storage_key(filename), safe='/')}")
+    abort(404)
+
+
+def stored_photo(filename, operation):
+    client = storage_client()
+    keys = dict.fromkeys((storage_key(filename), filename))
+    for key in keys:
+        try:
+            result = getattr(client, operation)(Bucket=S3_BUCKET, Key=key)
+        except ClientError as error:
+            status = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status != 404 and error.response.get("Error", {}).get("Code") not in {"NoSuchKey", "404"}:
+                raise
+            continue
+        return key, result
+    return None, None
+
+
+def read_stored_photo(filename):
+    _, result = stored_photo(filename, "get_object")
+    if result is None:
+        return None
+    with closing(result["Body"]) as body:
+        return body.read(MAX_FILE_SIZE + 1)
+
+
+def signed_photo_url(filename):
+    key, _ = stored_photo(filename, "head_object")
+    if key is None:
+        return None
+    return storage_client().generate_presigned_url(
+        "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=120,
+    )
+
+
+def image_type(header):
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if header.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def save_uploaded_image(file):
+    if not file or not file.filename:
+        return None
+
+    extension = Path(file.filename).suffix.lower().lstrip(".")
+    content_type = IMAGE_TYPES.get(extension)
+    if not content_type or image_type(file.stream.read(12)) != content_type:
+        raise ValueError("Choose a PNG, JPEG, GIF, or WebP image that matches its file extension.")
+    file.stream.seek(0, os.SEEK_END)
+    if file.stream.tell() > MAX_FILE_SIZE:
+        raise ValueError("Photos must be 5 MB or smaller.")
+    file.stream.seek(0)
+
+    filename = f"{secrets.token_hex(16)}.{extension}"
+    if S3_ENDPOINT:
+        try:
+            storage_client().upload_fileobj(
+                file, S3_BUCKET, storage_key(filename),
+                ExtraArgs={"ContentType": content_type},
+            )
+        except (BotoCoreError, ClientError, Boto3Error):
+            delete_image_file(filename)
+            raise
+    elif ON_RENDER or IMAGE_BASE_URL:
+        raise ValueError("Hosted photo uploads require S3_ENDPOINT and storage credentials.")
+    else:
+        LOCAL_UPLOADS.mkdir(parents=True, exist_ok=True)
+        try:
+            file.save(LOCAL_UPLOADS / filename)
+        except OSError:
+            delete_image_file(filename)
+            raise
+    return filename
+
+
+def delete_image_file(filename):
+    if not filename:
+        return
+    try:
+        if S3_ENDPOINT:
+            storage_client().delete_object(Bucket=S3_BUCKET, Key=storage_key(filename))
+            if os.getenv("CELERY_BROKER_URL"):
+                storage_client().delete_object(Bucket=S3_BUCKET, Key=storage_key(thumbnail_name(filename)))
+        elif not ON_RENDER:
+            (LOCAL_UPLOADS / Path(filename).name).unlink(missing_ok=True)
+    except (BotoCoreError, ClientError, Boto3Error, OSError):
+        app.logger.exception("Failed to clean up recipe photo %s", filename)
+
+
+def read_recipe_form(recipe):
+    ingredient_lines = [
+        SimpleNamespace(amount=amount or "", unit=unit or "", name=name or "")
+        for amount, unit, name in zip_longest(
+            request.form.getlist("ing_amount"),
+            request.form.getlist("ing_unit"),
+            request.form.getlist("ing_name"),
+        )
+    ]
+    return SimpleNamespace(
+        title=request.form.get("title", "").strip(),
+        instructions=request.form.get("instructions", "").strip(),
+        servings=request.form.get("servings", "").strip(),
+        tags=request.form.get("tags", ""),
+        ingredient_lines=ingredient_lines,
+        image_filename=recipe.image_filename if recipe else None,
+    )
+
+
+def validate_recipe_form(form):
+    if not form.title or len(form.title) > 120 or not form.instructions:
+        raise ValueError("Enter a title of 120 characters or fewer and add cooking instructions.")
+    try:
+        servings = int(form.servings or "4")
+    except ValueError:
+        servings = 0
+    if not 1 <= servings <= 2_147_483_647:
+        raise ValueError("Enter a valid whole number of servings, at least 1.")
+
+    names = list(dict.fromkeys(name for part in form.tags.split(",") if (name := part.strip())))
+    if any(len(name) > 50 for name in names):
+        raise ValueError("Keep each tag to 50 characters or fewer.")
 
     ingredients = []
-    for amount, unit, name in zip(amounts, units, names):
-        name = name.strip()
+    for row in form.ingredient_lines:
+        name = row.name.strip()
+        unit = row.unit.strip()
         if not name:
+            if row.amount.strip() or unit:
+                raise ValueError("Enter a name for each ingredient with an amount or unit.")
             continue
-        ingredients.append(RecipeIngredient(
-            amount=float(amount) if amount.strip() else 0,
-            unit=unit.strip(),
-            name=name
-        ))
-    return ingredients
+        try:
+            amount = float(row.amount.strip() or "0")
+        except ValueError:
+            raise ValueError("Each ingredient amount must be a number.") from None
+        if not math.isfinite(amount) or amount < 0:
+            raise ValueError("Each ingredient amount must be a finite, non-negative number.")
+        if len(name) > 120 or len(unit) > 20:
+            raise ValueError("Keep ingredient names to 120 characters and units to 20 characters.")
+        ingredients.append(RecipeIngredient(name=name, unit=unit, amount=amount))
+    return servings, names, ingredients
+
+
+def get_or_create_tags(names):
+    if not names:
+        return []
+    insert = postgres_insert if db.engine.dialect.name == "postgresql" else sqlite_insert
+    db.session.execute(
+        insert(Tag).values([{"name": name} for name in sorted(names)])
+        .on_conflict_do_nothing(index_elements=[Tag.name])
+    )
+    tags = {tag.name: tag for tag in Tag.query.filter(Tag.name.in_(names))}
+    return [tags[name] for name in names]
+
+
+def save_recipe(recipe=None):
+    form = read_recipe_form(recipe)
+    try:
+        servings, names, ingredients = validate_recipe_form(form)
+    except ValueError as error:
+        flash(str(error), "error")
+        return render_template("add.html", recipe=recipe, form=form), 400
+
+    new_image = old_image = None
+    try:
+        new_image = save_uploaded_image(request.files.get("image"))
+        if recipe is not None and db.engine.dialect.name == "postgresql":
+            # Serialize edits so each replacement cleans up the photo it actually replaced.
+            db.session.refresh(recipe, with_for_update=True)
+        tags = get_or_create_tags(names)
+        if recipe is None:
+            saved = Recipe(owner_id=g.get("recipe_user_id"))
+            db.session.add(saved)
+            saved.ingredient_lines = ingredients
+        else:
+            saved = recipe
+            old_image = saved.image_filename
+            if saved.title != form.title:
+                saved.origin = None
+            old_ingredients = [(row.amount, row.unit or "", row.name) for row in saved.ingredient_lines]
+            new_ingredients = [(row.amount, row.unit, row.name) for row in ingredients]
+            if old_ingredients != new_ingredients:
+                saved.ingredient_lines = ingredients
+            if old_ingredients != new_ingredients or saved.servings != servings:
+                saved.calories = saved.protein_g = saved.carbs_g = saved.fat_g = None
+        saved.title = form.title
+        saved.instructions = form.instructions
+        saved.servings = servings
+        saved.tags = tags
+        if new_image:
+            saved.image_filename = new_image
+        db.session.flush()
+        audit(saved, "update" if recipe is not None else "create")
+        db.session.commit()
+    except ValueError as error:
+        db.session.rollback()
+        delete_image_file(new_image)
+        flash(str(error), "error")
+        return render_template("add.html", recipe=recipe, form=form), 400
+    except (SQLAlchemyError, BotoCoreError, ClientError, Boto3Error, OSError):
+        db.session.rollback()
+        delete_image_file(new_image)
+        app.logger.exception("Failed to save recipe")
+        flash("Could not save the recipe. Please try again.", "error")
+        return render_template("add.html", recipe=recipe, form=form), 503
+
+    if new_image:
+        delete_image_file(old_image)
+        if S3_ENDPOINT and os.getenv("CELERY_BROKER_URL"):
+            from kombu.exceptions import OperationalError
+            from tasks import photo_thumbnail
+            try:
+                photo_thumbnail.apply_async(args=[saved.id, new_image, saved.owner_id], retry=False, expires=3600)
+            except OperationalError:
+                app.logger.warning("Thumbnail queue unavailable. Original stays available.")
+    flash(f'"{saved.title}" was {"updated" if recipe else "added"}!', "success")
+    if recipe:
+        return redirect(url_for("view_recipe", recipe_id=saved.id))
+    return redirect(url_for("home"))
 
 
 # --- Routes ----------------------------------------------------------------
+
+@app.get("/healthz")
+def health():
+    return "", 200
+
+
+@app.get("/readyz")
+def ready():
+    try:
+        db.session.execute(select(1)).scalar_one()
+    except SQLAlchemyError:
+        return "", 503
+    return "", 200
+
+
+@app.after_request
+def protect_private_responses(response):
+    if g.get("recipe_user_id") and request.endpoint != "static":
+        response.cache_control.private = True
+        response.cache_control.no_store = True
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
+
+
+def rate_limit_ai():
+    try:
+        allowed = allow_ai_request(g.get("recipe_user_id") or session["csrf_token"])
+    except CacheUnavailable:
+        return jsonify(success=False, error="Please try again shortly."), 503
+    if not allowed:
+        return jsonify(success=False, error="Too many AI requests. Try again in a minute."), 429
+    return None
+
 
 @app.route("/")
 def home():
@@ -135,24 +487,18 @@ def home():
     favorites_only = request.args.get("favorites") == "1"
     page = request.args.get("page", 1, type=int)
 
-    query = Recipe.query
+    query = recipe_query()
 
     if search:
         pattern = f"%{search}%"
-        query = query.outerjoin(Recipe.tags).outerjoin(
-            Recipe.ingredient_lines
-        ).filter(or_(
+        query = query.filter(or_(
             Recipe.title.ilike(pattern),
             Recipe.instructions.ilike(pattern),
-            Tag.name.ilike(pattern),
-            RecipeIngredient.name.ilike(pattern),
+            Recipe.tags.any(Tag.name.ilike(pattern)),
+            Recipe.ingredient_lines.any(RecipeIngredient.name.ilike(pattern)),
         ))
-        if tag:
-            query = query.filter(Tag.name == tag)
-        query = query.distinct()
-
-    elif tag:
-        query = query.join(Recipe.tags).filter(Tag.name == tag)
+    if tag:
+        query = query.filter(Recipe.tags.any(Tag.name == tag))
 
     if favorites_only:
         query = query.filter(Recipe.is_favorite == True)
@@ -173,43 +519,68 @@ def home():
 
 @app.route("/recipe/<int:recipe_id>")
 def view_recipe(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
     return render_template("recipe.html", recipe=recipe)
 
 
 @app.route("/add", methods=["GET", "POST"])
 def add_recipe():
     if request.method == "POST":
-        image_filename = save_uploaded_image(request.files.get("image"))
-        if image_filename == "INVALID":
-            return render_template("add.html", recipe=None)
-
-        new_recipe = Recipe(
-            title=request.form["title"],
-            instructions=request.form["instructions"],
-            servings=request.form.get("servings", type=int) or 4,
-            tags=get_or_create_tags(request.form.get("tags", "")),
-            ingredient_lines=parse_ingredients_from_form(),
-            image_filename=image_filename
-        )
-        db.session.add(new_recipe)
-        db.session.commit()
-        flash(f'"{new_recipe.title}" was added!', "success")
-        return redirect(url_for("home"))
-
+        return save_recipe()
     return render_template("add.html", recipe=None)
+
+
+@app.post("/api/chef-chat")
+def chef_chat():
+    payload = request.get_json(silent=True)
+    question = payload.get("question") if isinstance(payload, dict) else None
+    question = question.strip() if isinstance(question, str) else ""
+    if not 1 <= len(question) <= 400:
+        return jsonify(success=False, error="Enter a question of 400 characters or fewer."), 400
+
+    limited = rate_limit_ai()
+    if limited is not None:
+        return limited
+    key = cache_key(session["csrf_token"])
+    memory_available = True
+    try:
+        memory = load_memory(key)
+    except (SQLAlchemyError, CacheUnavailable):
+        db.session.rollback()
+        app.logger.warning("Chef session cache unavailable.")
+        memory, memory_available = [], False
+
+    page_recipe_id = payload.get("recipe_id")
+    if type(page_recipe_id) is not int or not 1 <= page_recipe_id <= 2_147_483_647:
+        page_recipe_id = None
+    recipe_answer = answer_recipe_question(question, memory, page_recipe_id)
+    if recipe_answer is None:
+        db.session.rollback()
+        use_gemini = os.getenv("CHEF_RAG_PROVIDER", "local").lower() == "gemini"
+        answer, _, turn = answer_question(question, memory, use_gemini=use_gemini)
+    else:
+        answer, turn = recipe_answer
+    if turn and memory_available:
+        try:
+            remember(key, turn)
+        except (SQLAlchemyError, CacheUnavailable):
+            db.session.rollback()
+            memory_available = False
+            app.logger.warning("Could not update chef session cache.")
+    return jsonify(success=True, answer=answer, memory_available=memory_available)
 
 
 @app.route("/api/recipe/suggest", methods=["POST"])
 def api_recipe_suggest():
-    title = request.get_json(silent=True) or {}
-    title = (title.get("title") or "").strip()
+    payload = request.get_json(silent=True)
+    title = payload.get("title") if isinstance(payload, dict) else None
+    title = title.strip() if isinstance(title, str) else ""
 
-    if not title:
-        return jsonify({"success": False, "error": "Please enter a recipe title first."}), 400
+    if not title or len(title) > 120:
+        return jsonify({"success": False, "error": "Enter a recipe title of 120 characters or fewer."}), 400
 
-    existing = Recipe.query.filter(
-        Recipe.title.ilike(f"%{title}%")
+    existing = recipe_query().filter(
+        db.func.lower(Recipe.title) == title.lower()
     ).first()
 
     if existing is not None:
@@ -220,7 +591,13 @@ def api_recipe_suggest():
             "message": f'"{existing.title}" is already in your box.',
         }), 409
 
-    result = get_recipe_from_web(title)
+    limited = rate_limit_ai()
+    if limited is not None:
+        return limited
+    try:
+        result = get_recipe_suggestion(title)
+    except AIUnavailable as error:
+        return ai_error(error)
 
     if result is None:
         return jsonify({"success": False, "error": "Couldn't fetch a recipe right now. Try again later."}), 500
@@ -230,40 +607,19 @@ def api_recipe_suggest():
 
 @app.route("/edit/<int:recipe_id>", methods=["GET", "POST"])
 def edit_recipe(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
 
     if request.method == "POST":
-        recipe.title = request.form["title"]
-        recipe.instructions = request.form["instructions"]
-        recipe.servings = request.form.get("servings", type=int) or 4
-        recipe.tags = get_or_create_tags(request.form.get("tags", ""))
-        recipe.ingredient_lines = parse_ingredients_from_form()
-
-        new_image = save_uploaded_image(request.files.get("image"))
-        if new_image == "INVALID":
-            return render_template("add.html", recipe=recipe)
-        if new_image:
-            delete_image_file(recipe.image_filename)
-            recipe.image_filename = new_image
-
-        # Ingredients changed — clear cached nutrition so it gets recalculated
-        recipe.calories = None
-        recipe.protein_g = None
-        recipe.carbs_g = None
-        recipe.fat_g = None
-
-        db.session.commit()
-        flash(f'"{recipe.title}" was updated!', "success")
-        return redirect(url_for("view_recipe", recipe_id=recipe.id))
-
+        return save_recipe(recipe)
     return render_template("add.html", recipe=recipe)
 
 
 @app.route("/delete/<int:recipe_id>", methods=["POST"])
 def delete_recipe(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
     title = recipe.title
     image_filename = recipe.image_filename
+    audit(recipe, "delete")
     db.session.delete(recipe)
     db.session.commit()
     delete_image_file(image_filename)
@@ -273,8 +629,9 @@ def delete_recipe(recipe_id):
 
 @app.route("/api/delete/<int:recipe_id>", methods=["POST"])
 def api_delete_recipe(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
     image_filename = recipe.image_filename
+    audit(recipe, "delete")
     db.session.delete(recipe)
     db.session.commit()
     delete_image_file(image_filename)
@@ -283,19 +640,20 @@ def api_delete_recipe(recipe_id):
 
 @app.route("/favorite/<int:recipe_id>", methods=["POST"])
 def toggle_favorite(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
     recipe.is_favorite = not recipe.is_favorite
+    audit(recipe, "favorite")
     db.session.commit()
     flash(
         f'"{recipe.title}" {"added to" if recipe.is_favorite else "removed from"} favorites.',
         "success"
     )
-    return redirect(request.referrer or url_for("home"))
+    return redirect(url_for("view_recipe", recipe_id=recipe.id))
 
 
 @app.route("/rate/<int:recipe_id>", methods=["POST"])
 def rate_recipe(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
 
     rating = request.form.get("rating", type=int)
 
@@ -304,6 +662,7 @@ def rate_recipe(recipe_id):
         return redirect(url_for("view_recipe", recipe_id=recipe.id))
 
     recipe.rating = rating
+    audit(recipe, "rate")
     db.session.commit()
     flash(f'Rated "{recipe.title}" {rating} stars.', "success")
     return redirect(url_for("view_recipe", recipe_id=recipe.id))
@@ -311,23 +670,31 @@ def rate_recipe(recipe_id):
 
 @app.route("/api/origin/<int:recipe_id>", methods=["POST"])
 def api_recipe_origin(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
 
-    if recipe.origin:
+    if recipe.origin and recipe.origin != "Unknown origin.":
         return jsonify({"success": True, "origin": recipe.origin})
 
+    limited = rate_limit_ai()
+    if limited is not None:
+        return limited
     try:
         origin_text = get_recipe_origin(recipe.title)
-        recipe.origin = origin_text
-        db.session.commit()
-        return jsonify({"success": True, "origin": origin_text})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    except AIUnavailable as error:
+        return ai_error(error)
+    recipe.origin = origin_text
+    db.session.commit()
+    return jsonify(success=True, origin=origin_text)
+
+
+def ai_error(error):
+    app.logger.info("Recipe AI unavailable: %s", error)
+    return jsonify(success=False, error=str(error)), 503
 
 
 @app.route("/api/nutrition/<int:recipe_id>", methods=["POST"])
 def api_nutrition(recipe_id):
-    recipe = Recipe.query.get_or_404(recipe_id)
+    recipe = recipe_query().filter_by(id=recipe_id).first_or_404()
 
     if recipe.calories is not None:
         return jsonify({
@@ -341,15 +708,17 @@ def api_nutrition(recipe_id):
     if not recipe.ingredient_lines:
         return jsonify({"success": False, "error": "No ingredients to estimate from."}), 400
 
-    result = get_nutrition_estimate(recipe.ingredient_lines, recipe.servings)
-
-    if result is None:
-        return jsonify({"success": False, "error": "Couldn't estimate nutrition right now."}), 500
-
-    recipe.calories = result.get("calories", 0)
-    recipe.protein_g = result.get("protein_g", 0)
-    recipe.carbs_g = result.get("carbs_g", 0)
-    recipe.fat_g = result.get("fat_g", 0)
+    limited = rate_limit_ai()
+    if limited is not None:
+        return limited
+    try:
+        result = get_nutrition_estimate(recipe.ingredient_lines, recipe.servings)
+    except AIUnavailable as error:
+        return ai_error(error)
+    recipe.calories = result["calories"]
+    recipe.protein_g = result["protein_g"]
+    recipe.carbs_g = result["carbs_g"]
+    recipe.fat_g = result["fat_g"]
     db.session.commit()
 
     return jsonify({
@@ -361,5 +730,17 @@ def api_nutrition(recipe_id):
     })
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+if launch_args is not None:
+    migrations = str(Path(__file__).resolve().parent / "migrations")
+    with app.app_context():
+        if db.engine.dialect.name == "sqlite":
+            upgrade(directory=migrations)
+        else:
+            try:
+                with db.engine.connect() as connection:
+                    current = set(MigrationContext.configure(connection).get_current_heads())
+            except SQLAlchemyError:
+                raise SystemExit("Could not connect to the configured database. Check DATABASE_URL or run python app.py for local development.") from None
+            if current != set(ScriptDirectory(migrations).get_heads()):
+                raise SystemExit("The configured database is missing Recipe Box migrations. Run python app.py for local development, or apply the release migrations before starting with configured services.")
+    app.run(port=launch_args.port)

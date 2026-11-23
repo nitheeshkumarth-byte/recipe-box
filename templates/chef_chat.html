@@ -1,0 +1,43 @@
+<div class="chef-chat" id="chef-chat" hidden data-chat-url="{{ url_for('chef_chat') }}"
+    {% if request.endpoint == 'view_recipe' and recipe %}data-recipe-id="{{ recipe.id }}"{% endif %}>
+    <button type="button" class="chef-launcher" id="chef-launcher"
+        aria-label="Open Recipe Box help" aria-haspopup="dialog"
+        aria-controls="chef-panel" aria-expanded="false">
+        <span class="chef-mascot" aria-hidden="true">
+            <span class="chef-coat"></span>
+            <span class="chef-hand"></span>
+            <span class="chef-face">
+                <span class="chef-eyes"></span>
+                <span class="chef-smile"></span>
+            </span>
+            <span class="chef-hat"></span>
+        </span>
+    </button>
+
+    <section class="chef-panel" id="chef-panel" role="dialog" aria-labelledby="chef-heading" hidden>
+        <header class="chef-panel-header">
+            <h2 id="chef-heading">Recipe Box help</h2>
+            <button type="button" class="chef-close" aria-label="Close help">&times;</button>
+        </header>
+        <div class="chef-transcript" role="log" aria-label="Chat messages" aria-relevant="additions text" tabindex="0">
+            <p class="chef-message chef-reply">Hi! Ask about your recipes, or tell me how many servings you’re making.</p>
+        </div>
+        <div class="chef-questions" role="group" aria-label="Frequently asked questions">
+            {% if request.endpoint == 'view_recipe' and recipe %}
+            <button type="button" data-question="What are the ingredients for this recipe?">Ingredients</button>
+            <button type="button" data-question="Scale this recipe for 8 servings">Scale to 8 servings</button>
+            <button type="button" data-question="How many calories are in this recipe per serving?">Calories</button>
+            {% else %}
+            <button type="button" data-question="How many recipes do I have?">Count my recipes</button>
+            <button type="button" data-question="Show my favorite recipes">My favorites</button>
+            {% endif %}
+            <button type="button" data-question="How do I upload a photo?">Upload a photo</button>
+        </div>
+        <form class="chef-form">
+            <label class="visually-hidden" for="chef-question">Ask about your recipes or Recipe Box</label>
+            <input id="chef-question" name="question" type="text" maxlength="400"
+                placeholder="Ask about Recipe Box…" autocomplete="off" enterkeyhint="send" required>
+            <button type="submit">Send</button>
+        </form>
+    </section>
+</div>

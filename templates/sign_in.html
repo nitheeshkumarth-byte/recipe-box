@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Recipe Box{% endblock %}
+{% block content %}
+<section class="form-page account-page">
+    <h1 class="form-title">Sign in to Recipe Box</h1>
+    <form class="form-card account-form" method="post" action="{{ url_for('auth.sign_in') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+            <label for="account-email">Email</label>
+            <input id="account-email" type="email" name="email" required maxlength="254" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="account-password">Password</label>
+            <input id="account-password" type="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit">Sign in</button>
+    </form>
+    {% if config.SUPABASE_SSO_DOMAINS %}
+    <form class="form-card account-form" method="post" action="{{ url_for('auth.sso') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+            <label for="sso-organization">Organization</label>
+            <select id="sso-organization" name="domain" required>
+                {% for domain in config.SUPABASE_SSO_DOMAINS|sort %}
+                <option value="{{ domain }}">{{ domain }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit">Continue with SSO</button>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}

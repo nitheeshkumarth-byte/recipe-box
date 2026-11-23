@@ -7,3 +7,11 @@ Flask-Migrate
 uvicorn
 psycopg2-binary
 boto3
+cryptography
+redis
+celery
+Pillow
+opentelemetry-distro
+opentelemetry-exporter-otlp
+opentelemetry-instrumentation-flask
+opentelemetry-instrumentation-sqlalchemy

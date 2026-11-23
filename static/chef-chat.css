@@ -1,0 +1,322 @@
+.chef-chat {
+    position: fixed;
+    z-index: 20;
+    inset-inline-end: max(16px, env(safe-area-inset-right));
+    inset-block-end: calc(max(16px, env(safe-area-inset-bottom)) + var(--chef-keyboard-offset, 0px));
+}
+
+.chef-launcher {
+    display: grid;
+    width: 68px;
+    height: 68px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--accent-line);
+    border-radius: 24px;
+    background: radial-gradient(circle at 45% 25%, var(--paper), var(--accent-soft));
+    box-shadow: var(--shadow-lg);
+    cursor: pointer;
+}
+
+.chef-launcher:hover,
+.chef-launcher[aria-expanded="true"] {
+    border-color: var(--accent);
+}
+
+.chef-mascot {
+    --chef-outline: #49322e;
+    --chef-skin: #f5ba93;
+    --chef-white: #fff9ee;
+    position: relative;
+    width: 53px;
+    height: 57px;
+    transform-origin: 50% 86%;
+}
+
+.chef-coat,
+.chef-hand,
+.chef-face,
+.chef-hat {
+    position: absolute;
+    border: 1.5px solid var(--chef-outline);
+}
+
+.chef-coat {
+    inset: 38px 10px 3px 8px;
+    border-radius: 15px 15px 9px 9px;
+    background: var(--chef-white);
+}
+
+.chef-coat::after {
+    position: absolute;
+    inset: 7px 12px auto;
+    width: 9px;
+    height: 6px;
+    border-radius: 2px 2px 4px 4px;
+    background: #ab513e;
+    content: "";
+}
+
+.chef-hand {
+    inset: 34px 1px auto auto;
+    width: 12px;
+    height: 19px;
+    border-radius: 8px 8px 5px 5px;
+    background: linear-gradient(var(--chef-skin) 48%, var(--chef-outline) 48% 56%, var(--chef-white) 56%);
+    transform: rotate(19deg);
+    transform-origin: 40% 85%;
+}
+
+.chef-face {
+    inset: 17px 12px auto 9px;
+    height: 27px;
+    border-radius: 42% 42% 47% 47%;
+    background:
+        radial-gradient(ellipse at 20% 67%, #dc7b6e 0 7%, transparent 11%),
+        radial-gradient(ellipse at 80% 67%, #dc7b6e 0 7%, transparent 11%),
+        var(--chef-skin);
+}
+
+.chef-eyes {
+    position: absolute;
+    inset: 10px auto auto 7px;
+    width: 3px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--chef-outline);
+    box-shadow: 11px 0 var(--chef-outline);
+}
+
+.chef-smile {
+    position: absolute;
+    inset: 15px auto auto 10px;
+    width: 9px;
+    height: 5px;
+    border-bottom: 2px solid var(--chef-outline);
+    border-radius: 50%;
+}
+
+.chef-hat {
+    inset: 8px 10px auto 7px;
+    height: 16px;
+    border-radius: 13px 13px 6px 6px;
+    background: linear-gradient(var(--chef-white) 64%, #dccdd0 64% 73%, var(--chef-white) 73%);
+    transform-origin: 50% 95%;
+}
+
+.chef-hat::before {
+    position: absolute;
+    inset: -6px 6px auto;
+    height: 12px;
+    border: 1.5px solid var(--chef-outline);
+    border-bottom: 0;
+    border-radius: 55% 65% 20% 15%;
+    background: var(--chef-white);
+    content: "";
+}
+
+@media (hover: hover) {
+    .chef-launcher:hover .chef-hand {
+        animation: chef-wave 620ms ease-in-out 2;
+    }
+
+    .chef-launcher:hover .chef-eyes {
+        animation: chef-blink 660ms ease both;
+    }
+}
+
+.chef-launcher.is-opening .chef-mascot {
+    animation: chef-bow 450ms cubic-bezier(.2, .75, .3, 1) both;
+}
+
+.chef-launcher.is-opening .chef-hat {
+    animation: chef-hat-pop 500ms ease both;
+}
+
+.chef-launcher.is-closing .chef-mascot {
+    animation: chef-nod 330ms ease both;
+}
+
+@keyframes chef-wave {
+    0%, 100% { transform: rotate(19deg); }
+    28%, 70% { transform: translateY(-3px) rotate(-24deg); }
+    48%, 88% { transform: translateY(-3px) rotate(27deg); }
+}
+
+@keyframes chef-blink {
+    25%, 41% { transform: scaleY(.25); }
+    0%, 19%, 47%, 100% { transform: scaleY(1); }
+}
+
+@keyframes chef-bow {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    38% { transform: translateY(-5px) rotate(-11deg) scale(1.04); }
+    73% { transform: translateY(1px) rotate(6deg); }
+}
+
+@keyframes chef-hat-pop {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    35% { transform: translateY(-6px) rotate(8deg); }
+    72% { transform: translateY(1px) rotate(-5deg); }
+}
+
+@keyframes chef-nod {
+    0%, 100% { transform: none; }
+    48% { transform: translateY(3px) rotate(8deg) scale(.95); }
+}
+
+.chef-panel {
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-end: 80px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    width: min(380px, calc(100vw - 34px));
+    height: min(490px, max(186px, calc(var(--chef-viewport-height, 100dvh) - 110px)));
+    overflow: hidden;
+    border: 1px solid var(--line-strong);
+    border-radius: 20px;
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: var(--shadow-lg);
+    animation: chef-panel-enter 180ms ease-out both;
+    transform-origin: right bottom;
+}
+
+@keyframes chef-panel-enter {
+    from { opacity: 0; transform: translateY(5px) scale(.98); }
+    to { opacity: 1; transform: none; }
+}
+
+.chef-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--accent-soft);
+}
+
+.chef-panel-header h2 {
+    font: 650 1.2rem var(--font-display);
+}
+
+.chef-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--ink);
+    font: 1.35rem var(--font-body);
+    cursor: pointer;
+}
+
+.chef-close:hover {
+    background: var(--paper);
+}
+
+.chef-transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 14px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+.chef-message {
+    flex: 0 0 auto;
+    max-width: 89%;
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: .87rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.chef-reply {
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+    background: var(--cream-deep);
+}
+
+.chef-user {
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.chef-message-text {
+    white-space: pre-wrap;
+}
+
+.chef-questions button:disabled,
+.chef-form button:disabled {
+    opacity: .65;
+    cursor: wait;
+}
+
+.chef-questions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    overflow-x: auto;
+    padding: 5px 12px 9px;
+}
+
+.chef-chat.is-compact .chef-questions {
+    flex-wrap: nowrap;
+}
+
+.chef-questions button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 5px 9px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent-deep);
+    font: 600 .77rem var(--font-body);
+    cursor: pointer;
+}
+
+.chef-questions button:hover {
+    background: var(--accent-soft);
+}
+
+.chef-form {
+    display: flex;
+    gap: 7px;
+    padding: 9px 12px 12px;
+    border-top: 1px solid var(--line);
+}
+
+.chef-form input[type="text"] {
+    min-width: 0;
+    flex: 1;
+    padding: 9px 10px;
+    font-size: 1rem;
+}
+
+.chef-form button {
+    padding: 8px 12px;
+}
+
+@media (max-width: 760px) {
+    body:has(.chef-chat:not([hidden])) {
+        padding-block-end: calc(96px + env(safe-area-inset-bottom));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chef-chat *,
+    .chef-chat *::before,
+    .chef-chat *::after {
+        animation: none !important;
+    }
+}

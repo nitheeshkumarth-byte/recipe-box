@@ -1,14 +1,33 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#304d3b">
+    <meta name="recipe-service-worker" content="{{ url_for('pwa.service_worker') }}">
+    <link rel="manifest" href="{{ url_for('pwa.manifest') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/recipe-box-192.png') }}">
+    <script defer src="{{ url_for('static', filename='install.js') }}"></script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Recipe Box{% endblock %}</title>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script>
+        window.addEventListener("error", event => {
+            if (!(event.target instanceof HTMLImageElement) || !event.target.hasAttribute("data-recipe-photo")) return;
+            event.target.hidden = true;
+            const fallback = event.target.nextElementSibling;
+            if (fallback) fallback.hidden = false;
+        }, true);
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='chef-chat.css') }}">
+    <script defer src="{{ url_for('static', filename='chef-chat.js') }}"></script>
 </head>
 
 <body>
@@ -16,16 +35,41 @@
         <nav class="site-nav">
             <a href="{{ url_for('home') }}" class="logo">🍲 Recipe Box</a>
             <div class="nav-links">
+                {% if not config.ACCOUNT_AUTH or g.recipe_user_id %}
                 <a href="{{ url_for('home', favorites='1') }}" class="nav-link">★ Favorites</a>
-                <a href="{{ url_for('swagger_bp.swagger_ui') }}" class="nav-link" target="_blank">⚡ API Docs</a>
+                <a href="{{ url_for('swagger_bp.swagger_ui') }}" class="nav-link"
+                    target="_blank">⚡ API Docs</a>
+                {% endif %}
+                <div class="theme-picker" hidden>
+                    <button type="button" class="theme-toggle" id="theme-toggle" aria-expanded="false"
+                        aria-controls="theme-palettes">Theme</button>
+                    <div class="theme-palettes" id="theme-palettes" role="group" aria-label="Color palette" hidden>
+                        {% for value, label in [('sage', 'Sage'), ('ocean', 'Ocean Blue'), ('lavender', 'Lavender'),
+                        ('terracotta', 'Terracotta'), ('midnight', 'Midnight Dark')] %}
+                        <button type="button" class="theme-option" data-theme-choice="{{ value }}"
+                            aria-pressed="false">
+                            <span class="theme-swatch" data-palette="{{ value }}" aria-hidden="true"></span>
+                            {{ label }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% if not config.ACCOUNT_AUTH or g.recipe_user_id %}
                 <a href="{{ url_for('add_recipe') }}" class="btn">+ Add Recipe</a>
+                {% endif %}
+                {% if g.recipe_user_id %}
+                <form class="nav-signout" method="post" action="{{ url_for('auth.sign_out') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-link">Sign out</button>
+                </form>
+                {% endif %}
             </div>
         </nav>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-    <div class="flash-container">
+    <div class="flash-container" role="status">
         {% for category, message in messages %}
         <div class="flash flash-{{ category }}">{{ message }}</div>
         {% endfor %}
@@ -33,9 +77,16 @@
     {% endif %}
     {% endwith %}
 
+    <script>
+        const csrfHeaders = { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content };
+    </script>
     <main>
         {% block content %}{% endblock %}
     </main>
+
+    {% if not config.ACCOUNT_AUTH or g.recipe_user_id %}
+    {% include 'chef_chat.html' %}
+    {% endif %}
 
     <script>
         document.querySelectorAll(".delete-btn").forEach(button => {
@@ -44,17 +95,32 @@
 
                 if (!confirm("Delete this recipe?")) return;
 
-                const response = await fetch(`/api/delete/${recipeId}`, {
-                    method: "POST"
-                });
-
-                if (response.ok) {
+                button.disabled = true;
+                try {
+                    const response = await fetch(button.dataset.url, {
+                        method: "POST", headers: csrfHeaders
+                    });
+                    if (!response.ok) throw new Error("Could not delete recipe.");
+                    if (document.getElementById("recipe-list").children.length === 1) {
+                        const url = new URL(window.location.href);
+                        const page = Number(url.searchParams.get("page")) || 1;
+                        if (page > 1) url.searchParams.set("page", page - 1);
+                        window.location.replace(url);
+                        return;
+                    }
                     const el = document.getElementById(`recipe-${recipeId}`);
                     if (el) el.remove();
                     const listEl = document.getElementById(`recipe-list-${recipeId}`);
                     if (listEl) listEl.remove();
-                    refreshFilmControls?.();
-                } else {
+                    document.getElementById("recipe-list").dispatchEvent(new Event("recipe-removed"));
+                    const count = document.querySelector(".filter-count");
+                    if (count) {
+                        const total = Number(count.dataset.total) - 1;
+                        count.dataset.total = total;
+                        count.textContent = `${total} ${total === 1 ? "recipe" : "recipes"}`;
+                    }
+                } catch {
+                    button.disabled = false;
                     alert("Something went wrong deleting that recipe.");
                 }
             });

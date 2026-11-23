@@ -1,12 +1,18 @@
 import os
 import json
+import logging
+import math
 import time
 from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
 
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+logger = logging.getLogger(__name__)
+
+
+class AIUnavailable(RuntimeError):
+    pass
 
 MODEL = "gemini-2.5-flash"
 
@@ -15,43 +21,43 @@ TRANSIENT_STATUS_CODES = (429, 500, 503)
 
 def _generate(prompt):
     """Call Gemini with retries for transient API errors."""
-    last_error = None
-    for attempt in range(3):
-        try:
-            return client.models.generate_content(
-                model=MODEL,
-                contents=prompt
-            )
-        except Exception as e:
-            last_error = e
-            status = getattr(e, "code", None)
-            if status not in TRANSIENT_STATUS_CODES:
-                raise
-            time.sleep(2 * (attempt + 1))
-    raise last_error
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise AIUnavailable("AI features are unavailable until Gemini is configured.")
+    with genai.Client(api_key=key) as client:
+        for attempt in range(3):
+            try:
+                return client.models.generate_content(model=MODEL, contents=prompt).text
+            except Exception as error:
+                status = getattr(error, "code", None)
+                if status in TRANSIENT_STATUS_CODES and attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                logger.warning("Gemini request failed (%s)", type(error).__name__)
+                raise AIUnavailable("Gemini is unavailable right now. Please try again.") from error
 
 
 def _extract_json(raw_text):
     """Try to pull a JSON object out of Gemini's text response."""
+    if not raw_text:
+        raise AIUnavailable("Gemini returned an empty response. Please try again.")
     cleaned = raw_text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
         cleaned = cleaned.replace("json", "", 1).strip()
 
     try:
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end != -1 and end > start:
+        data = json.loads(cleaned)
+    except ValueError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
         try:
-            return json.loads(cleaned[start:end + 1])
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    return None
+            data = json.loads(cleaned[start:end + 1]) if start != -1 and end > start else None
+        except ValueError:
+            data = None
+    if not isinstance(data, dict):
+        raise AIUnavailable("Gemini returned an unexpected response. Please try again.")
+    return data
 
 
 def get_recipe_origin(title):
@@ -63,17 +69,15 @@ def get_recipe_origin(title):
         f"honestly rather than inventing details."
     )
 
-    try:
-        response = _generate(prompt)
-    except Exception:
-        return "Unknown origin."
-    return response.text
+    text = _generate(prompt)
+    if not text or not text.strip():
+        raise AIUnavailable("Gemini returned no origin information. Please try again.")
+    return text.strip()
 
 
 def get_nutrition_estimate(ingredient_lines, servings):
     """Ask Gemini to estimate nutrition per serving, given structured ingredients.
-    Returns a dict like {"calories": 320, "protein_g": 12, "carbs_g": 40, "fat_g": 10}
-    or None if the response couldn't be parsed."""
+    Return a validated dictionary of integer values."""
 
     ingredients_text = "\n".join(
         f"- {ing.amount} {ing.unit or ''} {ing.name}".strip()
@@ -88,28 +92,26 @@ def get_nutrition_estimate(ingredient_lines, servings):
         f"in exactly this shape:\n"
         f'{{"calories": <number>, "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>}}\n'
         f"These are estimates — round to whole numbers. If you cannot reasonably "
-        f"estimate, use 0 for all values."
+        f"estimate, respond with an empty JSON object."
     )
 
-    try:
-        response = _generate(prompt)
-    except Exception:
-        return None
+    data = _extract_json(_generate(prompt))
+    fields = ("calories", "protein_g", "carbs_g", "fat_g")
+    if not all(type(data.get(field)) is int and 0 <= data[field] <= 2_147_483_647 for field in fields):
+        raise AIUnavailable("Gemini could not provide a complete nutrition estimate.")
+    return {field: data[field] for field in fields}
 
-    return _extract_json(response.text)
 
-
-def get_recipe_from_web(title):
-    """Ask Gemini to return a well-known online recipe for a dish title.
+def get_recipe_suggestion(title):
+    """Ask Gemini to suggest a recipe for a dish title.
     Returns a dict like:
       {"title": "...", "servings": 4, "ingredients": [
          {"amount": 2, "unit": "cups", "name": "rice"}, ...
        ], "instructions": "...", "tags": ["dinner"]}
-    or None if the response couldn't be parsed."""
+    """
 
     prompt = (
-        f"Find a well-known, genuine published recipe for the dish '{title}'. "
-        f"Use your knowledge of real online recipes.\n\n"
+        f"Suggest a recipe for the dish '{title}'.\n\n"
         f"Respond with ONLY a JSON object, no other text, no markdown formatting, "
         f"in exactly this shape:\n"
         f'{{\n'
@@ -126,19 +128,39 @@ def get_recipe_from_web(title):
         f"- Provide complete, usable cooking instructions."
     )
 
-    try:
-        response = _generate(prompt)
-    except Exception:
-        return None
+    data = _extract_json(_generate(prompt))
+    servings = data.get("servings")
+    ingredients = data.get("ingredients")
+    instructions = data.get("instructions")
+    tags = data.get("tags")
+    suggested_title = data.get("title")
+    if (
+        not valid_text(suggested_title, 120)
+        or type(servings) is not int or not 1 <= servings <= 2_147_483_647
+        or not isinstance(ingredients, list) or not ingredients
+        or not all(valid_ingredient(row) for row in ingredients)
+        or not valid_text(instructions, 24_000)
+        or not isinstance(tags, list)
+        or not all(valid_text(tag, 50) and "," not in tag for tag in tags)
+    ):
+        raise AIUnavailable("Gemini returned an incomplete recipe. Please try again.")
+    return {
+        "title": suggested_title, "servings": servings, "ingredients": ingredients,
+        "instructions": instructions, "tags": tags,
+    }
 
-    data = _extract_json(response.text)
 
-    if data is None:
-        return None
+def valid_text(value, max_length):
+    return isinstance(value, str) and bool(value.strip()) and len(value) <= max_length
 
-    data.setdefault("title", title)
-    data.setdefault("servings", 4)
-    data.setdefault("ingredients", [])
-    data.setdefault("instructions", "")
-    data.setdefault("tags", [])
-    return data
+
+def valid_ingredient(row):
+    if not isinstance(row, dict):
+        return False
+    amount = row.get("amount")
+    unit = row.get("unit")
+    return (
+        type(amount) in (int, float) and 0 <= amount <= 1e12 and math.isfinite(amount)
+        and isinstance(unit, str) and len(unit) <= 20
+        and valid_text(row.get("name"), 120)
+    )

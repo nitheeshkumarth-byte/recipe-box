@@ -11,6 +11,7 @@ recipe_tags = db.Table(
 
 class Recipe(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.String(36), index=True)
     title = db.Column(db.String(120), nullable=False)
     instructions = db.Column(db.Text, nullable=False)
     is_favorite = db.Column(db.Boolean, default=False, nullable=False)
@@ -47,3 +48,18 @@ class Tag(db.Model):
 
     def __repr__(self):
         return self.name
+
+
+class ChefSessionCache(db.Model):
+    session_key = db.Column(db.String(64), primary_key=True)
+    version = db.Column(db.Integer, nullable=False)
+    value = db.Column(db.JSON, nullable=False)
+    expires_at = db.Column(db.Integer, nullable=False, index=True)
+
+
+class AuditEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.String(36), nullable=False, index=True)
+    action = db.Column(db.String(30), nullable=False)
+    recipe_id = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
