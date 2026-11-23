@@ -2,6 +2,10 @@
 
 {% block content %}
 <section class="collection-hero" aria-labelledby="collection-title">
+	<picture class="collection-photo" aria-hidden="true">
+		<source media="(max-width: 640px)" srcset="{{ url_for('static', filename='images/recipe-box-hero-mobile.webp') }}">
+		<img src="{{ url_for('static', filename='images/recipe-box-hero.webp') }}" width="1672" height="941" alt="" fetchpriority="high">
+	</picture>
 	<div class="collection-intro">
 		<h1 id="collection-title">{{ 'Favorite recipes' if favorites_only else 'Your recipe box' }}</h1>
 		<div class="search-bar">
@@ -9,7 +13,7 @@
 				{% if favorites_only %}<input type="hidden" name="favorites" value="1">{% endif %}
 				{% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
 				<input type="search" name="q" aria-label="Search recipes"
-					placeholder="Search recipes, ingredients, tags…" value="{{ search }}">
+					placeholder="Recipes, ingredients, tags" value="{{ search }}">
 				<button type="submit">Search</button>
 			</form>
 		</div>

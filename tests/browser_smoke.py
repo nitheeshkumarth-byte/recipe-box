@@ -25,6 +25,9 @@ try:
         context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
         page = context.new_page()
         page.goto(url)
+        assert "recipe-box-hero-mobile.webp" in page.locator(".collection-photo img").evaluate(
+            "image => image.decode().then(() => image.currentSrc)"
+        )
         page.get_by_role("link", name="Add Recipe").click()
         page.get_by_label("Title").fill("Weeknight rice")
         page.get_by_label("Step by step").fill("Cook the rice.")

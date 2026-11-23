@@ -56,7 +56,15 @@ try:
                     browser = playwright.chromium.launch()
                     context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
                     page = context.new_page()
+                    page.route("**/api/session", lambda route: route.fulfill(status=503, body="API unavailable"))
                     page.goto(url)
+                    page.get_by_role("alert").wait_for()
+                    assert "recipe-box-hero-mobile.webp" in page.locator(".collection-photo img").evaluate(
+                        "image => image.decode().then(() => image.currentSrc)"
+                    )
+                    assert page.get_by_role("searchbox", name="Search recipes").is_visible()
+                    page.unroute("**/api/session")
+                    page.reload()
                     page.get_by_role("link", name="Add Recipe").click()
                     page.get_by_label("Title").fill("Weeknight rice")
                     page.get_by_label("Step by step").fill("Cook the rice.")

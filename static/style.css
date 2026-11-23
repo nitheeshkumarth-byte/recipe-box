@@ -150,42 +150,84 @@ body {
 }
 
 .collection-hero {
+    position: relative;
     display: flex;
     align-items: end;
-    min-height: clamp(230px, 34vw, 355px);
-    margin-bottom: 25px;
-    padding: clamp(20px, 5vw, 56px);
-    border-radius: 26px;
-    background:
-        linear-gradient(90deg, var(--hero-shade) 8%, color-mix(in srgb, var(--hero-shade) 93%, transparent) 38%, transparent),
-        radial-gradient(ellipse at 87% 20%, var(--accent) 0%, var(--hero-shade) 72%);
-    box-shadow: var(--shadow-lg);
+    min-height: clamp(350px, 42vw, 462px);
+    margin-bottom: clamp(23px, 4vw, 38px);
+    padding: clamp(24px, 5.5vw, 66px);
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: clamp(20px, 4vw, 38px);
+    background: radial-gradient(ellipse at 88% 14%, var(--accent), var(--hero-shade) 72%);
+    box-shadow: var(--shadow-lg), inset 0 0 0 1px #ffffff33;
     color: var(--hero-ink);
 }
 
+.collection-photo,
+.collection-hero::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.collection-photo {
+    z-index: -2;
+    overflow: hidden;
+}
+
+.collection-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 75% 51%;
+    animation: collection-photo-settle 950ms cubic-bezier(.2,.65,.3,1) both;
+}
+
+.collection-hero::after {
+    z-index: -1;
+    content: "";
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--hero-shade) 79%, #070b08) 0%,
+        color-mix(in srgb, var(--hero-shade) 75%, transparent) 34%, transparent 75%),
+        linear-gradient(0deg, #0d140e56, transparent 45%);
+}
+
 .collection-intro {
-    width: min(100%, 490px);
+    width: min(100%, 475px);
 }
 
 .collection-hero h1 {
-    margin-bottom: 18px;
-    font: 650 clamp(2.4rem, 6.2vw, 4.75rem) / 1.02 var(--font-display);
-    letter-spacing: -0.045em;
+    margin-bottom: clamp(15px, 3vw, 27px);
+    font: 660 clamp(2.6rem, 7vw, 5.55rem) / .98 var(--font-display);
+    letter-spacing: -.055em;
+    text-wrap: balance;
+    text-shadow: 0 2px 18px #050a06a8;
+    animation: collection-rise 580ms cubic-bezier(.2,.7,.25,1) both;
 }
 
 .collection-hero .search-bar form {
     margin: 0;
-    padding: 5px;
-    gap: 5px;
+    padding: 6px;
+    gap: 4px;
     flex-wrap: nowrap;
-    border-radius: 14px;
+    border: 1px solid #ffffff24;
+    border-radius: 18px;
     background: var(--paper);
+    box-shadow: 0 8px 26px #090d0873;
+    transition: box-shadow 220ms ease;
+    animation: collection-rise 580ms 85ms cubic-bezier(.2,.7,.25,1) both;
+}
+
+.collection-hero .search-bar form:focus-within {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 74%, transparent), 0 10px 30px #090d0873;
 }
 
 .collection-hero input[type="search"] {
     width: 100%;
     min-width: 0;
-    padding: 8px 10px;
+    padding: 10px clamp(8px, 1.7vw, 16px);
     border: 0;
     border-radius: 8px;
     background: transparent;
@@ -194,9 +236,19 @@ body {
 }
 
 .collection-hero button {
-    padding: 9px 14px;
-    border-radius: 9px;
+    padding: 10px clamp(11px, 2vw, 22px);
+    border-radius: 12px;
     background: var(--accent-deep);
+}
+
+@keyframes collection-photo-settle {
+    from { transform: scale(1.045); }
+    to { transform: scale(1); }
+}
+
+@keyframes collection-rise {
+    from { opacity: .55; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .empty-collection {
@@ -738,12 +790,13 @@ a.tag:hover {
 /* ------- Recipe deck ------- */
 .recipe-deck {
     margin: 0 auto 24px;
-    max-width: 610px;
+    max-width: 710px;
+    animation: collection-rise 540ms cubic-bezier(.2,.7,.25,1) both;
 }
 
 .deck-stack {
     display: grid;
-    grid-template-columns: minmax(0, 366px);
+    grid-template-columns: minmax(0, 403px);
     justify-content: center;
     padding: 22px clamp(22px, 5vw, 46px) 42px;
     overflow: hidden;
@@ -751,6 +804,7 @@ a.tag:hover {
     border: 1px solid var(--line);
     border-radius: 25px;
     background:
+        repeating-linear-gradient(130deg, transparent 0 13px, color-mix(in srgb, var(--accent) 7%, transparent) 13px 14px),
         radial-gradient(ellipse at 45% 35%, var(--paper), transparent 72%),
         linear-gradient(135deg, var(--accent-soft), var(--cream-deep));
     touch-action: pan-y pinch-zoom;
@@ -819,6 +873,13 @@ a.tag:hover {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 470ms cubic-bezier(.2,.65,.3,1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .flashcard[data-depth="0"]:hover:not(.is-dragging) .flashcard-media img {
+        transform: scale(1.035);
+    }
 }
 
 .flashcard-placeholder {
@@ -1613,6 +1674,15 @@ a.tag:hover {
         gap: 10px;
     }
 
+    body > header {
+        padding: 14px 0;
+        margin-bottom: 18px;
+    }
+
+    .site-nav {
+        gap: 8px;
+    }
+
     .recipe-card {
         padding: 22px 18px;
     }
@@ -1622,8 +1692,18 @@ a.tag:hover {
     }
 
     .collection-hero {
-        border-radius: 19px;
-        background-position: center, 67% center;
+        min-height: clamp(330px, 103vw, 418px);
+        padding: 22px 17px;
+    }
+
+    .collection-photo img {
+        object-position: 59% 28%;
+    }
+
+    .collection-hero::after {
+        background: linear-gradient(0deg,
+            color-mix(in srgb, var(--hero-shade) 79%, #070b08) 0%,
+            color-mix(in srgb, var(--hero-shade) 57%, transparent) 36%, transparent 78%);
     }
 
     .nav-links {
@@ -1631,7 +1711,19 @@ a.tag:hover {
     }
 
     .nav-link {
-        padding-inline: 7px;
+        padding-inline: 6px;
+    }
+
+    .nav-links .nav-link,
+    .nav-links .btn,
+    .nav-links .theme-toggle {
+        min-height: 38px;
+        font-size: .83rem;
+    }
+
+    .nav-links .btn,
+    .nav-links .theme-toggle {
+        padding-inline: 9px;
     }
 
     .theme-palettes {

@@ -1,27 +1,43 @@
 import { api, escape, photoMarkup } from './api.js';
 
+const desktopHero = new URL('../static/images/recipe-box-hero.webp', import.meta.url).href;
+const mobileHero = new URL('../static/images/recipe-box-hero-mobile.webp', import.meta.url).href;
+
 function collectionLink(params, updates) {
     const query = new URLSearchParams(params);
     Object.entries(updates).forEach(([key, value]) => value ? query.set(key, value) : query.delete(key));
     return query.size ? `/?${query}` : '/';
 }
 
-export async function renderCollection(content) {
+export function prepareCollection(content) {
     const params = new URLSearchParams(location.search);
-    const { recipes, page, pages, total } = await api(`/api/recipes?${params}`);
     const favorites = params.get('favorites') === '1';
     const tag = params.get('tag');
     content.innerHTML = `
-        <section class="collection-hero">
-            <div class="collection-intro"><h1>${favorites ? 'Favorite recipes' : 'Your recipe box'}</h1>
+        <section class="collection-hero" aria-labelledby="collection-title">
+            <picture class="collection-photo" aria-hidden="true">
+                <source media="(max-width: 640px)" srcset="${mobileHero}">
+                <img src="${desktopHero}" width="1672" height="941" alt="" fetchpriority="high">
+            </picture>
+            <div class="collection-intro"><h1 id="collection-title">${favorites ? 'Favorite recipes' : 'Your recipe box'}</h1>
                 <div class="search-bar"><form role="search" action="/">
                     ${favorites ? '<input type="hidden" name="favorites" value="1">' : ''}
                     ${tag ? `<input type="hidden" name="tag" value="${escape(tag)}">` : ''}
-                    <input type="search" name="q" aria-label="Search recipes" placeholder="Search recipes, ingredients, tags…" value="${escape(params.get('q'))}">
+                    <input type="search" name="q" aria-label="Search recipes" placeholder="Recipes, ingredients, tags" value="${escape(params.get('q'))}">
                     <button>Search</button>
                 </form></div>
             </div>
         </section>
+        <div id="collection-results"><p role="status">Loading recipes…</p></div>`;
+    return content.querySelector('#collection-results');
+}
+
+export async function renderCollection(results) {
+    const params = new URLSearchParams(location.search);
+    const { recipes, page, pages, total } = await api(`/api/recipes?${params}`);
+    const favorites = params.get('favorites') === '1';
+    const tag = params.get('tag');
+    results.innerHTML = `
         <div class="filter-bar">
             <a class="filter-pill${favorites ? '' : ' active'}" href="${escape(collectionLink(params, { favorites: '', page: '' }))}">All</a>
             <a class="filter-pill${favorites ? ' active' : ''}" href="${escape(collectionLink(params, { favorites: '1', page: '' }))}">★ Favorites</a>

@@ -59,11 +59,16 @@
         animating = true;
         if (!reducedMotion.matches && outgoing.animate) {
             const exit = -direction * (stack.clientWidth + outgoing.offsetWidth) / 2;
-            const animation = outgoing.animate([
+            const timing = { duration: 300, easing: "cubic-bezier(.22,.61,.36,1)" };
+            const slide = outgoing.animate([
                 { transform: `translateX(${offset}px) rotate(${rotation(offset)}deg)`, opacity: 1 },
                 { transform: `translateX(${exit}px) rotate(${-direction * 24}deg)`, opacity: 0 },
-            ], { duration: 270, easing: "cubic-bezier(.22,.61,.36,1)" });
-            await animation.finished.catch(() => {});
+            ], timing);
+            const rise = incoming.animate([
+                { transform: getComputedStyle(incoming).transform },
+                { transform: "translate(0, 0) rotate(0) scale(1)" },
+            ], timing);
+            await Promise.allSettled([slide.finished, rise.finished]);
         }
         const hadFocus = document.activeElement === outgoing;
         index = Math.max(0, cards.indexOf(incoming));
