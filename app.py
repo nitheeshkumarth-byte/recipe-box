@@ -655,6 +655,11 @@ def view_recipe(recipe_id):
     return render_template("recipe.html", recipe=recipe)
 
 
+@app.get("/shopping-list")
+def shopping_list():
+    return render_template("shopping_list.html")
+
+
 @app.route("/add", methods=["GET", "POST"])
 def add_recipe():
     if request.method == "POST":

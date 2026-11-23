@@ -1809,3 +1809,126 @@ a.tag:hover {
     color: var(--ink-soft);
     box-shadow: none;
 }
+
+.shopping-list {
+    max-width: 920px;
+}
+
+.shopping-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 20px;
+}
+
+.shopping-card {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+    padding: clamp(16px, 3vw, 27px);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--paper);
+    box-shadow: var(--shadow-md);
+}
+
+.shopping-search,
+.shopping-pagination,
+.shopping-selection-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.shopping-search input,
+.shopping-selection input {
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--cream);
+    color: var(--ink);
+    font: inherit;
+}
+
+.shopping-search input {
+    flex: 1 1 140px;
+}
+
+.shopping-selection input {
+    width: 4.5em;
+}
+
+.shopping-options,
+.shopping-selection,
+.shopping-checklist {
+    display: grid;
+    gap: 6px;
+    list-style: none;
+}
+
+.shopping-card li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--cream);
+    overflow-wrap: anywhere;
+}
+
+.shopping-selection li {
+    flex-wrap: wrap;
+}
+
+.shopping-selection a {
+    color: var(--accent-deep);
+    font-weight: 600;
+}
+
+.shopping-card .action-btn {
+    padding: 6px 12px;
+    font-size: .88rem;
+}
+
+.shopping-card .action-btn:disabled {
+    opacity: .58;
+    cursor: default;
+    transform: none;
+}
+
+.shopping-checklist label {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+    cursor: pointer;
+}
+
+.shopping-checklist input {
+    accent-color: var(--accent);
+}
+
+.shopping-checklist input:checked + span {
+    color: var(--ink-faint);
+    text-decoration: line-through;
+}
+
+.shopping-progress,
+.shopping-status {
+    color: var(--ink-soft);
+    font-size: .88rem;
+}
+
+.shopping-status:empty {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .shopping-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

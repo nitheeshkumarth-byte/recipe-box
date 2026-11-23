@@ -16,6 +16,8 @@ An existing service can keep its name and adopt `bash scripts/migrate.sh` as its
 
 Use separate Redis URLs for cache and queue. When no queue is configured, the original photo stays available. Without Redis, chat context uses the SQL cache. Set an OTLP collector endpoint and credentials if you want telemetry. Monitor account errors, database readiness, thumbnail queue latency, image errors and AI response times. The start script logs paths without query strings and excludes auth endpoints from automatic Flask tracing.
 
+The GitHub Actions **Recipe Box production monitor** checks the public site hourly for a recipe collection, a recipe detail and photo, and a local chef reply. Run it on demand from the Actions tab or run `python scripts/monitor_production.py`. A failed workflow marks the probe as failed in GitHub Actions.
+
 For optional hybrid retrieval, set `CHEF_HYBRID_SEARCH=1`, `CHEF_RAG_PROVIDER=gemini`, and `GEMINI_API_KEY`. Run `flask --app app rebuild-chef-index` as the schema owner with pgvector installed in the `extensions` schema. Rebuild after source or embedding-model changes. This opt-in mode sends vetted passages and filtered questions to Gemini. Local-only mode sends neither.
 
 ## Vercel frontend
@@ -23,6 +25,8 @@ For optional hybrid retrieval, set `CHEF_HYBRID_SEARCH=1`, `CHEF_RAG_PROVIDER=ge
 Import the repository into Vercel with the repository root and the **Other** preset. The root `vercel.mjs` builds `web/` and routes API, auth, private media and PWA requests to the HTTPS origin in `RECIPE_BOX_BACKEND`. Set this public origin per Vercel environment. Preview and production should use separate backends and databases once staging is provisioned. All database and storage credentials stay on Render.
 
 To develop locally, run `python app.py` and then `npm ci --prefix web` and `npm run --prefix web dev` in another shell. Set `RECIPE_BOX_BACKEND` before starting Vite if Flask is on an alternate port. Run `python -m tests.split_browser_smoke` with Playwright Chromium installed to check the frontend and proxy together.
+
+The split browser test compares the collection, recipe detail, editor and shopping list on Flask and Vite at mobile and desktop widths. Failed CI runs attach the screenshots recorded before the failure.
 
 Keep the production apex on Render until the Vercel preview passes sign-in, recipe, upload and offline checks. Verify `api.jobscope.eu` on Render, then proxy that record in Cloudflare for public API traffic. Set Vercel's production `RECIPE_BOX_BACKEND` to `https://recipe-box-p3yz.onrender.com`. The Vercel config also maps the earlier `https://api.jobscope.eu` setting to the same Render origin to avoid intermittent DNS failures between Vercel and the Cloudflare alias. Browser requests still use same-origin rewrites on the frontend. Cloudflare's zone-level rules govern requests to `api.jobscope.eu`; requests forwarded by Vercel use Render directly. Using the apex itself as Vercel's backend after cutover would create a routing loop. Bypass shared caching for authenticated pages, API responses, and private photos. Keep the previous DNS target for rollback.
 

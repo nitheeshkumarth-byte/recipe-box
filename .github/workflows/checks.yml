@@ -50,6 +50,13 @@ jobs:
       - run: playwright install --with-deps chromium
       - run: python -m tests.browser_smoke
       - run: python -m tests.split_browser_smoke
+      - name: Upload layout screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-screenshots
+          path: test-results/visual/
+          if-no-files-found: ignore
       - name: Restore database into an empty CI database
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

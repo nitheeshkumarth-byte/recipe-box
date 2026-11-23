@@ -16,11 +16,12 @@ from urllib.request import urlopen
 from PIL import Image
 from playwright.sync_api import sync_playwright
 from werkzeug.serving import make_server
+from tests.layout_parity import check_layout_parity
 
 with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///:memory:"}, clear=True), patch("dotenv.load_dotenv"):
     import app as recipe_box
 
-from model import db
+from model import Recipe, RecipeIngredient, db
 
 
 def wait_for_frontend(frontend, url):
@@ -109,6 +110,32 @@ try:
                     assert page.get_by_role("button", name="Delete Updated rice").is_visible()
                     assert page.locator("#recipe-list .mini-rating").count() == 1
                     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    recipe_path = page.get_by_role("link", name="Updated rice", exact=True).get_attribute("href")
+                    with recipe_box.app.app_context():
+                        second = Recipe(title="Weekend rice", instructions="Steam the rice.", servings=2)
+                        second.ingredient_lines = [RecipeIngredient(name="rice", unit="cup", amount=1),
+                                                   RecipeIngredient(name="RICE", unit="g", amount=10)]
+                        db.session.add(second)
+                        db.session.commit()
+
+                    page.get_by_role("link", name="Shopping List", exact=True).click()
+                    for title in ("Updated rice", "Weekend rice"):
+                        page.get_by_role("button", name=f"Add {title}", exact=True).click()
+                    servings = page.get_by_role("spinbutton", name="Servings for Updated rice")
+                    servings.fill("8")
+                    servings.press("Tab")
+                    total = page.get_by_role("checkbox", name="5 cups Rice", exact=True)
+                    total.check()
+                    assert page.get_by_role("checkbox", name="10 g RICE", exact=True).is_visible()
+                    page.reload()
+                    total.wait_for()
+                    assert total.is_checked()
+                    page.get_by_role("button", name="Remove Weekend rice", exact=True).click()
+                    page.get_by_role("checkbox", name="4 cups Rice", exact=True).wait_for()
+                    assert not page.get_by_role("checkbox", name="10 g RICE", exact=True).count()
+                    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+                    check_layout_parity(browser, f"http://127.0.0.1:{server.server_port}", url, recipe_path)
                     assert page.request.get(url + "/manifest.webmanifest").json()["display"] == "standalone"
                     page.evaluate("navigator.serviceWorker.ready")
                     page.reload()
@@ -121,4 +148,4 @@ try:
 finally:
     server.shutdown()
 
-print("Split frontend recipe create/edit, photo, favorites, themes, chat, deck, and offline checks passed.")
+print("Split frontend recipe, photo, favorites, themes, chat, deck, shopping list, and offline checks passed.")

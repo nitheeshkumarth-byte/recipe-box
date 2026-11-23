@@ -2,6 +2,7 @@
 node_modules/
 .expo/
 .vercel/
+test-results/
 dist-android/
 dist-ios/
 dist/

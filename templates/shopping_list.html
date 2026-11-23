@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Shopping List · Recipe Box{% endblock %}
+{% block content %}
+<div id="shopping-list"><p role="status">Loading shopping list…</p></div>
+<script type="module" src="{{ url_for('static', filename='shopping-list.js') }}"></script>
+{% endblock %}

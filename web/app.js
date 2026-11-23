@@ -21,6 +21,7 @@ async function start() {
         const session = await api('/api/session');
         window.csrfHeaders = { 'X-CSRF-Token': session.csrf_token };
         document.getElementById('favorites-link').hidden = false;
+        document.getElementById('shopping-link').hidden = false;
         document.getElementById('api-docs-link').hidden = false;
         document.getElementById('add-link').hidden = false;
         document.getElementById('editor-sign-in').hidden = !session.editor_available || session.editor_signed_in;
@@ -36,6 +37,9 @@ async function start() {
             else renderRecipe(content, recipe);
         } else if (path === '/add') {
             renderEditor(content);
+        } else if (path === '/shopping-list') {
+            const { mountShoppingList } = await import('../static/shopping-list.js');
+            await mountShoppingList(content, session.csrf_token);
         } else if (path === '/') {
             await renderCollection(results);
         } else {

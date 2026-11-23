@@ -25,7 +25,7 @@ export const config = {
     outputDirectory: 'web/dist',
     rewrites: [
         ...forwarded.map(source => ({ source, destination: `${backend}${source}` })),
-        ...['/add', '/recipe/:id', '/edit/:id'].map(source => ({ source, destination: '/index.html' })),
+        ...['/add', '/recipe/:id', '/edit/:id', '/shopping-list'].map(source => ({ source, destination: '/index.html' })),
     ],
     headers: [{ source: '/(.*)', headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }] }],
 };
