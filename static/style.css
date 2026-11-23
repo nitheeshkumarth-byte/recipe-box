@@ -1470,6 +1470,13 @@ a.tag:hover {
 .suggest-status.ok    { color: var(--green); }
 
 /* File upload */
+.photo-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
 .file-label {
     display: flex;
     flex-direction: column;
@@ -1504,11 +1511,16 @@ a.tag:hover {
 .file-name {
     color: var(--ink-faint);
     font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.file-name:empty {
+    display: none;
 }
 
 .form-photo-preview {
     margin-top: 8px;
-    max-width: 200px;
+    max-width: min(100%, 200px);
     border-radius: 12px;
     box-shadow: var(--shadow-md);
     border: 1px solid var(--line);

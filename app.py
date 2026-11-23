@@ -30,7 +30,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from model import db, Recipe, Tag, RecipeIngredient
 from ai_helper import (
-    AIUnavailable, get_recipe_origin, get_nutrition_estimate, get_recipe_suggestion,
+    AIUnavailable, generate_recipe_photo, get_recipe_origin, get_nutrition_estimate, get_recipe_suggestion,
 )
 from chef_memory import cache_key, load_memory, remember
 from chef_rag import answer_question
@@ -706,6 +706,30 @@ def chef_chat():
             memory_available = False
             app.logger.warning("Could not update chef session cache.")
     return jsonify(success=True, answer=answer, memory_available=memory_available)
+
+
+@app.post("/api/recipe/photo")
+def api_recipe_photo():
+    payload = request.get_json(silent=True)
+    title = payload.get("title") if isinstance(payload, dict) else None
+    title = title.strip() if isinstance(title, str) else ""
+    if not title or len(title) > 120:
+        return jsonify(success=False, error="Enter a recipe title of 120 characters or fewer."), 400
+
+    limited = rate_limit_ai()
+    if limited is not None:
+        return limited
+    try:
+        photo, has_reference = generate_recipe_photo(title)
+    except AIUnavailable as error:
+        return ai_error(error)
+
+    content_type = image_type(photo[:12])
+    if not content_type or len(photo) > MAX_FILE_SIZE:
+        return ai_error(AIUnavailable("Gemini returned an unsupported photo. Try again or upload one."))
+    return Response(photo, mimetype=content_type, headers={
+        "X-Recipe-Photo-Reference": "commons" if has_reference else "none",
+    })
 
 
 @app.route("/api/recipe/suggest", methods=["POST"])

@@ -82,6 +82,18 @@ try:
                     photo = BytesIO()
                     Image.new("RGB", (20, 20), "red").save(photo, format="PNG")
                     page.get_by_label("Recipe photo").set_input_files({"name": "rice.png", "mimeType": "image/png", "buffer": photo.getvalue()})
+                    page.get_by_role("img", name="Recipe photo preview").wait_for()
+                    page.get_by_role("button", name="Discard Photo").click()
+                    assert not page.get_by_role("img", name="Recipe photo preview").is_visible()
+                    page.route("**/api/recipe/photo", lambda route: route.fulfill(
+                        content_type="image/png", body=photo.getvalue(),
+                        headers={"X-Recipe-Photo-Reference": "commons"},
+                    ))
+                    with page.expect_request("**/api/recipe/photo") as photo_request:
+                        page.get_by_role("button", name="Generate Photo").click()
+                    assert photo_request.value.post_data_json == {"title": "Weeknight rice"}
+                    page.get_by_role("img", name="Recipe photo preview").wait_for()
+                    assert page.get_by_label("Recipe photo").evaluate("input => input.files[0].name") == "generated-recipe.png"
                     page.get_by_role("button", name="Save Recipe").click()
                     page.get_by_role("heading", name="Weeknight rice").wait_for()
                     assert page.locator(".recipe-photo").evaluate("image => image.decode().then(() => image.naturalWidth)") == 20
@@ -100,7 +112,13 @@ try:
                     page.get_by_text("4 cups Rice", exact=False).wait_for()
                     page.get_by_role("button", name="Close help").click()
                     page.get_by_role("link", name="Edit", exact=True).click()
-                    page.locator(".form-photo-preview").wait_for()
+                    saved_photo = page.get_by_role("img", name="Weeknight rice", exact=True)
+                    saved_photo.wait_for()
+                    page.get_by_role("button", name="Generate Photo").click()
+                    page.get_by_role("img", name="Recipe photo preview").wait_for()
+                    assert not saved_photo.is_visible()
+                    page.get_by_role("button", name="Discard Photo").click()
+                    saved_photo.wait_for()
                     page.get_by_label("Title").fill("Updated rice")
                     page.get_by_role("button", name="Save Changes").click()
                     page.get_by_role("heading", name="Updated rice").wait_for()

@@ -2,7 +2,8 @@ Flask
 Flask-SQLAlchemy
 python-dotenv
 gunicorn
-google-genai
+google-genai>=3.0.0
+requests
 Flask-Migrate
 uvicorn
 psycopg2-binary

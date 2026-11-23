@@ -97,6 +97,61 @@ class RecipeBoxTests(unittest.TestCase):
         }
         return self.client.post(path, data={**form, **changes}, headers=self.headers)
 
+    def test_photo_generation_validates_request_and_returns_an_unsaved_image(self):
+        path = "/api/recipe/photo"
+        photo = b"\x89PNG\r\n\x1a\nimage signature fixture"
+        with patch.object(recipe_box, "generate_recipe_photo", return_value=(photo, True)) as generate:
+            self.assertEqual(self.client.post(path, json={"title": "Rice bowl"}).status_code, 400)
+            self.assertEqual(self.client.post(path, json=[], headers=self.headers).status_code, 400)
+            self.assertEqual(self.client.post(path, json={"title": "x" * 121}, headers=self.headers).status_code, 400)
+            with patch.object(recipe_box, "ON_RENDER", True), patch.dict(os.environ, {
+                "RECIPE_BOX_EDITOR_PASSWORD": "fixture-password",
+                "SECRET_KEY": "fixture-secret",
+            }):
+                self.assertEqual(self.client.post(path, json={"title": "Rice"}, headers=self.headers).status_code, 401)
+            generate.assert_not_called()
+
+            response = self.client.post(path, json={"title": " Rice bowl "}, headers=self.headers)
+            generate.assert_called_once_with("Rice bowl")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "image/png")
+            self.assertEqual(response.data, photo)
+            self.assertEqual(response.headers["X-Recipe-Photo-Reference"], "commons")
+            self.assertTrue(response.cache_control.no_store)
+            self.assertEqual(Recipe.query.count(), 0)
+
+    def test_photo_generator_sends_only_dish_name_and_public_domain_reference(self):
+        import ai_helper
+
+        photo = b"generated photo"
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fixture"}, clear=True), \
+                patch.object(ai_helper, "find_photo_reference", return_value=(["Rice bowl"], b"reference")) as search, \
+                patch.object(ai_helper.genai, "Client") as client:
+            create = client.return_value.__enter__.return_value.models.generate_content
+            create.return_value.parts = [
+                ai_helper.types.Part.from_text(text="The recipe photo is ready."),
+                ai_helper.types.Part.from_bytes(data=photo, mime_type="image/png"),
+            ]
+            self.assertEqual(ai_helper.generate_recipe_photo("Rice bowl"), (photo, True))
+            search.assert_called_once_with("Rice bowl")
+            request = create.call_args.kwargs
+            self.assertEqual(request["model"], "gemini-nano-banana-2.1")
+            self.assertIn("Rice bowl", request["contents"][0].text)
+            self.assertEqual(request["contents"][1].inline_data.data, b"reference")
+            self.assertEqual(request["config"].response_modalities, ["IMAGE"])
+            self.assertEqual(request["config"].image_config.aspect_ratio, "4:3")
+            self.assertFalse(request["config"].store)
+
+            search.return_value = ([], None)
+            self.assertEqual(ai_helper.generate_recipe_photo("Rice bowl"), (photo, False))
+            self.assertEqual(len(create.call_args.kwargs["contents"]), 1)
+
+            create.side_effect = ai_helper.genai.errors.ClientError(
+                429, {"error": {"status": "RESOURCE_EXHAUSTED"}}
+            )
+            with self.assertRaisesRegex(ai_helper.AIUnavailable, "image generation quota or rate limit"):
+                ai_helper.generate_recipe_photo("Rice bowl")
+
     def test_registration_of_tags_and_combined_search(self):
         self.assertEqual(self.submit("/add", tags="quick, quick, vegan").status_code, 302)
         self.assertEqual(len(Recipe.query.one().tags), 2)

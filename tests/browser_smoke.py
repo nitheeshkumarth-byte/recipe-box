@@ -42,6 +42,7 @@ try:
         assert abs(photo["height"] - hero["height"]) < 1
         assert hero["x"] < search["x"] < search["x"] + search["width"] < hero["x"] + hero["width"]
         page.get_by_role("link", name="Add Recipe").click()
+        page.get_by_role("button", name="Generate Photo").wait_for()
         page.get_by_label("Title").fill("Weeknight rice")
         page.get_by_label("Step by step").fill("Cook the rice.")
         page.locator('input[name="ing_name"]').first.fill("Rice")

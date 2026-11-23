@@ -43,21 +43,27 @@
             <div class="form-section">
                 <h2 class="form-heading">📷 Photo</h2>
                 <div class="field">
-                    <label class="file-label">
-                        <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp" id="f-image" class="visually-hidden">
-                        <span class="file-drop">
-                            {% if recipe and recipe.image_filename %}🖼️ Change photo{% else %}📤 Upload a photo{% endif
-                            %}
-                        </span>
-                        <span class="file-name" id="file-name"></span>
-                    </label>
+                    <div class="photo-controls">
+                        <label class="file-label">
+                            <input type="file" name="image" aria-label="Recipe photo" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden">
+                            <span class="file-drop">
+                                {% if recipe and recipe.image_filename %}🖼️ Change photo{% else %}📤 Upload a photo{% endif %}
+                            </span>
+                        </label>
+                        <button type="button" class="suggest-btn" data-generate-photo hidden>Generate Photo</button>
+                    </div>
+                    <p class="file-name" id="file-name"></p>
                     <p class="hint">PNG, JPEG, GIF, or WebP up to 5 MB.</p>
+                    <p class="suggest-status" role="status" data-photo-status></p>
+                    <img class="form-photo-preview" data-photo-preview alt="Recipe photo preview" hidden>
+                    <button type="button" class="suggest-btn" data-discard-photo hidden>Discard Photo</button>
                     {% if recipe and recipe.image_filename %}
-                        <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}"
-                            class="form-photo-preview" data-recipe-photo>
-                        <div class="photo-unavailable" hidden>Photo unavailable</div>
-                        <p class="hint">Uploading a new photo will replace this one.</p>
-                        {% endif %}
+                        <div data-saved-photo>
+                            <img src="{{ image_url(recipe.image_filename) }}" alt="{{ recipe.title }}"
+                                class="form-photo-preview" data-recipe-photo>
+                            <div class="photo-unavailable" hidden>Photo unavailable</div>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -103,14 +109,6 @@
 
 <script>
     const form = document.querySelector(".recipe-form");
-
-    const fileInput = document.getElementById("f-image");
-    const fileName = document.getElementById("file-name");
-    if (fileInput) {
-        fileInput.addEventListener("change", () => {
-            fileName.textContent = fileInput.files[0] ? fileInput.files[0].name : "";
-        });
-    }
 
     const ingredientContainer = document.getElementById("ingredient-rows");
     const suggestBtn = document.getElementById("suggest-btn");
@@ -221,5 +219,10 @@
             suggestStatus.hidden = true;
         });
     }
+</script>
+<script type="module">
+    import { mountRecipePhoto } from {{ url_for('static', filename='recipe-photo.js')|tojson }};
+    const recipeForm = document.querySelector(".recipe-form");
+    mountRecipePhoto(recipeForm, recipeForm.elements.csrf_token.value);
 </script>
 {% endblock %}

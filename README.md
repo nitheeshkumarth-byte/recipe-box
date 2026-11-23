@@ -105,6 +105,8 @@ Keep the existing database and photo-storage settings when updating an already d
 
 The app loads deployed recipe photos from Supabase using the S3 settings. It can also serve photos present in `instance/uploads/` or the legacy `static/uploads/` folder. If a deployed photo is missing, check that the stored recipe filename matches an object in the configured bucket.
 
+In Add Recipe or Edit Recipe, enter a dish title and choose **Generate Photo**. Recipe Box searches Wikimedia Commons for reference titles and a public-domain or CC0 reference image, then asks Gemini to generate a new photo. The editor indicates when Gemini used the title alone. A paid Gemini API project is required. Use `GEMINI_API_KEY` to enable generation and `GEMINI_IMAGE_MODEL` to override the default `gemini-nano-banana-2.1` model. Saving the recipe stores the photo through the usual upload flow and keeps its file key as a string in PostgreSQL.
+
 Browser forms and Swagger UI include a session-bound CSRF token. Custom API consumers should keep the session cookie from a page request and send the page's `csrf-token` meta value as `X-CSRF-Token` on POST requests.
 
 Run the local regression checks with `python -m unittest discover -s tests -v`.

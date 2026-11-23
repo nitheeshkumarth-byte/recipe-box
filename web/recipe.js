@@ -1,4 +1,5 @@
 import { api, escape, photoMarkup } from './api.js';
+import { mountRecipePhoto } from '../static/recipe-photo.js';
 
 function recipeAction(button, status, action) {
     return async event => {
@@ -173,13 +174,19 @@ export function renderEditor(content, recipe) {
                     <div class="form-section">
                         <h2 class="form-heading">📷 Photo</h2>
                         <div class="field">
-                            <label class="file-label">
-                                <input type="file" name="image" aria-label="Recipe photo" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden">
-                                <span class="file-drop">${recipe?.photo ? '🖼️ Change photo' : '📤 Upload a photo'}</span>
-                                <span class="file-name" id="file-name"></span>
-                            </label>
+                            <div class="photo-controls">
+                                <label class="file-label">
+                                    <input type="file" name="image" aria-label="Recipe photo" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden">
+                                    <span class="file-drop">${recipe?.photo ? '🖼️ Change photo' : '📤 Upload a photo'}</span>
+                                </label>
+                                <button type="button" class="suggest-btn" data-generate-photo hidden>Generate Photo</button>
+                            </div>
+                            <p class="file-name" id="file-name"></p>
                             <p class="hint">PNG, JPEG, GIF, or WebP up to 5 MB.</p>
-                            ${photoMarkup(recipe?.photo, { className: 'form-photo-preview', alt: recipe?.title })}
+                            <p class="suggest-status" role="status" data-photo-status></p>
+                            <img class="form-photo-preview" data-photo-preview alt="Recipe photo preview" hidden>
+                            <button type="button" class="suggest-btn" data-discard-photo hidden>Discard Photo</button>
+                            ${recipe?.photo ? `<div data-saved-photo>${photoMarkup(recipe.photo, { className: 'form-photo-preview', alt: recipe.title })}</div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -208,10 +215,7 @@ export function renderEditor(content, recipe) {
     rows.addEventListener('click', event => {
         if (event.target.matches('[data-remove-ingredient]')) event.target.closest('.ingredient-row').remove();
     });
-    const fileName = form.querySelector('#file-name');
-    form.elements.image.addEventListener('change', () => {
-        fileName.textContent = form.elements.image.files[0]?.name || '';
-    });
+    mountRecipePhoto(form, window.csrfHeaders['X-CSRF-Token']);
     const autoFill = form.querySelector('#auto-fill');
     const suggestionStatus = form.querySelector('#suggest-status');
     autoFill?.addEventListener('click', recipeAction(autoFill, suggestionStatus, async () => {
