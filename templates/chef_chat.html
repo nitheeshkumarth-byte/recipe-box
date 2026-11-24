@@ -1,26 +1,32 @@
 <div class="chef-chat" id="chef-chat" hidden data-chat-url="{{ url_for('chef_chat') }}"
     {% if request.endpoint == 'view_recipe' and recipe %}data-recipe-id="{{ recipe.id }}"{% endif %}>
-    <button type="button" class="chef-launcher" id="chef-launcher"
-        aria-label="Open Recipe Box help" aria-haspopup="dialog"
-        aria-controls="chef-panel" aria-expanded="false">
-        <span class="chef-mascot" aria-hidden="true">
-            <span class="chef-coat"></span>
-            <span class="chef-hand"></span>
-            <span class="chef-face">
-                <span class="chef-eyes"></span>
-                <span class="chef-smile"></span>
+    <div class="chef-launcher-area">
+        <button type="button" class="chef-launcher" id="chef-launcher"
+            aria-label="Open Recipe Box help" aria-controls="chef-actions chef-panel" aria-expanded="false">
+            <span class="chef-mascot" aria-hidden="true">
+                <span class="chef-coat"></span>
+                <span class="chef-hand"></span>
+                <span class="chef-face">
+                    <span class="chef-eyes"></span>
+                    <span class="chef-smile"></span>
+                </span>
+                <span class="chef-hat"></span>
             </span>
-            <span class="chef-hat"></span>
-        </span>
-    </button>
+        </button>
+        <div class="chef-actions" id="chef-actions" role="group" aria-label="Chef options" hidden>
+            <button type="button" data-chef-mode="talk">Talk</button>
+            <button type="button" data-chef-mode="chat">Chat</button>
+        </div>
+    </div>
 
     <section class="chef-panel" id="chef-panel" role="dialog" aria-labelledby="chef-heading" hidden>
         <header class="chef-panel-header">
             <h2 id="chef-heading">Recipe Box help</h2>
+            <button type="button" class="chef-talk" hidden>Talk to Chef</button>
             <button type="button" class="chef-close" aria-label="Close help">&times;</button>
         </header>
         <div class="chef-transcript" role="log" aria-label="Chat messages" aria-relevant="additions text" tabindex="0">
-            <p class="chef-message chef-reply">Hi! Ask about your recipes, or tell me how many servings you’re making.</p>
+            <p class="chef-message chef-reply">What are you cooking? Ask me about techniques, ingredient swaps, or your saved recipes.</p>
         </div>
         <div class="chef-questions" role="group" aria-label="Frequently asked questions">
             {% if request.endpoint == 'view_recipe' and recipe %}
@@ -36,8 +42,10 @@
         <form class="chef-form">
             <label class="visually-hidden" for="chef-question">Ask about your recipes or Recipe Box</label>
             <input id="chef-question" name="question" type="text" maxlength="400"
-                placeholder="Ask about Recipe Box…" autocomplete="off" enterkeyhint="send" required>
+                placeholder="Ask Chef a question…" autocomplete="off" enterkeyhint="send" required>
+            <button type="button" class="chef-mic" aria-label="Speak a question" aria-pressed="false" hidden>Mic</button>
             <button type="submit">Send</button>
+            <p class="chef-voice-status" role="status"></p>
         </form>
     </section>
 </div>

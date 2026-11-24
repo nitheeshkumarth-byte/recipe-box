@@ -29,6 +29,10 @@
     <link rel="stylesheet" href="{{ site_styles_url() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='chef-chat.css') }}">
     <script defer src="{{ url_for('static', filename='chef-chat.js') }}"></script>
+    {% if request.endpoint == 'home' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='kitchen.css') }}">
+    <script defer src="{{ url_for('static', filename='kitchen.js') }}"></script>
+    {% endif %}
 </head>
 
 <body>

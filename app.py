@@ -33,7 +33,7 @@ from ai_helper import (
     AIUnavailable, generate_recipe_photo, get_recipe_origin, get_nutrition_estimate, get_recipe_suggestion,
 )
 from chef_memory import cache_key, load_memory, remember
-from chef_rag import answer_question
+from chef_rag import answer_cooking_question, answer_question, is_cooking_question
 from chef_vectors import register_vector_commands
 from recipe_access import audit, recipe_query, register_access_commands
 from recipe_auth import configure_auth, signed_in_user
@@ -687,6 +687,10 @@ def chef_chat():
         db.session.rollback()
         app.logger.warning("Chef session cache unavailable.")
         memory, memory_available = [], False
+
+    if is_cooking_question(question):
+        answer = answer_cooking_question(question, allow_gemini=not public_chef)
+        return jsonify(success=True, answer=answer, memory_available=memory_available)
 
     page_recipe_id = payload.get("recipe_id")
     if type(page_recipe_id) is not int or not 1 <= page_recipe_id <= 2_147_483_647:

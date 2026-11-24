@@ -59,6 +59,11 @@ try:
                     page = context.new_page()
                     page.route("**/api/session", lambda route: route.fulfill(status=503, body="API unavailable"))
                     page.goto(url)
+                    page.get_by_role("button", name="Enter kitchen").click()
+                    kitchen = page.get_by_role("dialog", name="The Executive Kitchen")
+                    kitchen.get_by_role("img", name="Overhead view", exact=False).wait_for()
+                    kitchen.get_by_role("button", name="Back to recipes").click()
+                    assert not kitchen.is_visible()
                     page.get_by_role("alert").wait_for()
                     assert "recipe-box-hero-mobile.webp" in page.locator(".collection-photo img").evaluate(
                         "image => image.decode().then(() => image.currentSrc)"
@@ -108,6 +113,7 @@ try:
                     page.get_by_role("button", name="Midnight Dark").click()
                     assert page.locator("html").get_attribute("data-palette") == "midnight"
                     page.get_by_role("button", name="Open Recipe Box help").click()
+                    page.get_by_role("button", name="Chat", exact=True).click()
                     page.get_by_role("button", name="Scale to 8 servings").click()
                     page.get_by_text("4 cups Rice", exact=False).wait_for()
                     page.get_by_role("button", name="Close help").click()
@@ -139,6 +145,7 @@ try:
                     page.get_by_role("link", name="Shopping List", exact=True).click()
                     for title in ("Updated rice", "Weekend rice"):
                         page.get_by_role("button", name=f"Add {title}", exact=True).click()
+                    page.get_by_role("spinbutton", name="Servings for Weekend rice").wait_for()
                     servings = page.get_by_role("spinbutton", name="Servings for Updated rice")
                     servings.fill("8")
                     servings.press("Tab")

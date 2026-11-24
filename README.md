@@ -105,7 +105,13 @@ Keep the existing database and photo-storage settings when updating an already d
 
 The app loads deployed recipe photos from Supabase using the S3 settings. It can also serve photos present in `instance/uploads/` or the legacy `static/uploads/` folder. If a deployed photo is missing, check that the stored recipe filename matches an object in the configured bucket.
 
-In Add Recipe or Edit Recipe, enter a dish title and choose **Generate Photo**. Recipe Box searches Wikimedia Commons for reference titles and a public-domain or CC0 reference image, then asks Gemini to generate a new photo. The editor indicates when Gemini used the title alone. A paid Gemini API project is required. Use `GEMINI_API_KEY` to enable generation and `GEMINI_IMAGE_MODEL` to override the default `gemini-nano-banana-2.1` model. Saving the recipe stores the photo through the usual upload flow and keeps its file key as a string in PostgreSQL.
+In Add Recipe or Edit Recipe, enter a dish title and choose **Generate Photo**. Recipe Box sends the dish title and any matching Wikimedia Commons image titles as a text prompt to FLUX.1 Schnell on Cloudflare Workers AI. Saving the recipe stores the generated photo through the usual upload flow and keeps its file key as a string in PostgreSQL.
+
+Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN` in the Render web service environment or your local `.env`. Use an account-scoped token with permission to run Workers AI. Photo generation can use the Workers AI free allowance. [Cloudflare REST API setup](https://developers.cloudflare.com/workers-ai/get-started/rest-api/) · [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+
+Hover over or tap the chef for **Talk** and **Chat**. In supported browsers, Chef submits each spoken question, reads the answer, then listens for a follow-up. Choose **End voice**, say “stop listening,” or close the chat to end the session. The **Mic** button lets you review dictated text before sending, and **Read aloud** plays an individual reply. Some browsers use an external transcription service. Recipe Box receives the question as text.
+
+Chef answers common cooking questions locally and can use the configured Gemini text model for broader cooking advice when an editor is signed in or the app is running locally. General cooking questions send only the redacted question to Gemini and do not become part of the recipe chat cache. Saved recipe calculations still use the recipe database.
 
 Browser forms and Swagger UI include a session-bound CSRF token. Custom API consumers should keep the session cookie from a page request and send the page's `csrf-token` meta value as `X-CSRF-Token` on POST requests.
 

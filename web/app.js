@@ -1,5 +1,6 @@
 import '../static/style.css';
 import '../static/chef-chat.css';
+import '../static/kitchen.css';
 import '../static/theme.js';
 import '../static/install.js';
 import { api } from './api.js';
@@ -16,6 +17,7 @@ window.addEventListener('error', event => {
 
 async function start() {
     const path = location.pathname.replace(/\/$/, '') || '/';
+    if (path === '/') void import('../static/kitchen.js');
     const results = path === '/' ? prepareCollection(content) : content;
     try {
         const session = await api('/api/session');

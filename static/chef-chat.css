@@ -19,8 +19,45 @@
 }
 
 .chef-launcher:hover,
-.chef-launcher[aria-expanded="true"] {
+.chef-launcher[aria-expanded="true"],
+.chef-launcher.is-listening {
     border-color: var(--accent);
+}
+
+.chef-launcher-area {
+    position: relative;
+}
+
+.chef-actions {
+    position: absolute;
+    inset-inline-end: 100%;
+    inset-block-end: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 68px;
+    padding-inline-end: 8px;
+}
+
+.chef-actions button {
+    min-height: 42px;
+    padding: 7px 13px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent-deep);
+    box-shadow: var(--shadow-sm);
+    font: 650 .85rem var(--font-body);
+    cursor: pointer;
+}
+
+.chef-actions button:hover:not(:disabled) {
+    background: var(--accent-soft);
+}
+
+.chef-actions button:disabled {
+    opacity: .6;
+    cursor: default;
 }
 
 .chef-mascot {
@@ -137,6 +174,29 @@
     animation: chef-nod 330ms ease both;
 }
 
+.chef-launcher.is-speaking .chef-smile {
+    inset-block-start: 16px;
+    height: 7px;
+    border: 1px solid var(--chef-outline);
+    background: var(--chef-outline);
+    animation: chef-mouth 380ms ease-in-out infinite;
+}
+
+.chef-launcher.is-speaking .chef-mascot {
+    animation: chef-talk-bob 860ms ease-in-out infinite;
+}
+
+@keyframes chef-mouth {
+    0%, 100% { transform: scale(.9, .38); }
+    32% { transform: scale(.75, 1); }
+    62% { transform: scale(1.15, .55); }
+}
+
+@keyframes chef-talk-bob {
+    0%, 100% { transform: none; }
+    50% { transform: translateY(-2px) rotate(-4deg); }
+}
+
 @keyframes chef-wave {
     0%, 100% { transform: rotate(19deg); }
     28%, 70% { transform: translateY(-3px) rotate(-24deg); }
@@ -203,7 +263,30 @@
     font: 650 1.2rem var(--font-display);
 }
 
+.chef-talk {
+    margin-inline-start: auto;
+    min-height: 36px;
+    padding: 5px 9px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent-deep);
+    font: 650 .78rem var(--font-body);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.chef-talk:hover:not(:disabled) {
+    background: var(--cream-deep);
+}
+
+.chef-talk:disabled {
+    opacity: .65;
+    cursor: wait;
+}
+
 .chef-close {
+    flex: 0 0 36px;
     width: 36px;
     height: 36px;
     border: 0;
@@ -291,6 +374,7 @@
 
 .chef-form {
     display: flex;
+    flex-wrap: wrap;
     gap: 7px;
     padding: 9px 12px 12px;
     border-top: 1px solid var(--line);
@@ -305,6 +389,45 @@
 
 .chef-form button {
     padding: 8px 12px;
+}
+
+.chef-form .chef-mic {
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+}
+
+.chef-form .chef-mic[aria-pressed="true"] {
+    outline: 2px solid var(--accent-deep);
+    outline-offset: 1px;
+}
+
+.chef-read-aloud {
+    margin-top: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--accent-line);
+    border-radius: 8px;
+    background: var(--paper);
+    color: var(--accent-deep);
+    font: 600 .77rem var(--font-body);
+    cursor: pointer;
+}
+
+.chef-read-aloud:hover {
+    background: var(--accent-soft);
+}
+
+.chef-voice-status {
+    flex-basis: 100%;
+    color: var(--ink-soft);
+    font-size: .77rem;
+}
+
+.chef-voice-status:empty {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
 }
 
 @media (max-width: 760px) {

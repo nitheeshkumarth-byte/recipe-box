@@ -120,35 +120,40 @@ class RecipeBoxTests(unittest.TestCase):
             self.assertTrue(response.cache_control.no_store)
             self.assertEqual(Recipe.query.count(), 0)
 
-    def test_photo_generator_sends_only_dish_name_and_public_domain_reference(self):
+    def test_photo_generator_sends_dish_and_reference_titles_to_cloudflare(self):
         import ai_helper
 
         photo = b"generated photo"
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "fixture"}, clear=True), \
-                patch.object(ai_helper, "find_photo_reference", return_value=(["Rice bowl"], b"reference")) as search, \
-                patch.object(ai_helper.genai, "Client") as client:
-            create = client.return_value.__enter__.return_value.models.generate_content
-            create.return_value.parts = [
-                ai_helper.types.Part.from_text(text="The recipe photo is ready."),
-                ai_helper.types.Part.from_bytes(data=photo, mime_type="image/png"),
-            ]
+        account_id = "a" * 32
+        settings = {"CLOUDFLARE_ACCOUNT_ID": account_id, "CLOUDFLARE_AI_API_TOKEN": "fixture"}
+        with patch.dict(os.environ, settings, clear=True), \
+                patch.object(ai_helper, "find_photo_reference_titles", return_value=["Bowl of seasoned rice"]) as search, \
+                patch.object(ai_helper.requests, "post") as create:
+            response = create.return_value
+            response.status_code = 200
+            response.json.return_value = {
+                "success": True, "result": {"image": base64.b64encode(photo).decode("ascii")},
+            }
             self.assertEqual(ai_helper.generate_recipe_photo("Rice bowl"), (photo, True))
             search.assert_called_once_with("Rice bowl")
+            url = create.call_args.args[0]
+            self.assertEqual(url, f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
+                                  "@cf/black-forest-labs/flux-1-schnell")
             request = create.call_args.kwargs
-            self.assertEqual(request["model"], "gemini-nano-banana-2.1")
-            self.assertIn("Rice bowl", request["contents"][0].text)
-            self.assertEqual(request["contents"][1].inline_data.data, b"reference")
-            self.assertEqual(request["config"].response_modalities, ["IMAGE"])
-            self.assertEqual(request["config"].image_config.aspect_ratio, "4:3")
-            self.assertFalse(request["config"].store)
+            self.assertEqual(request["headers"], {"Authorization": "Bearer fixture"})
+            self.assertFalse(request["allow_redirects"])
+            self.assertIn("Rice bowl", request["json"]["prompt"])
+            self.assertIn("Bowl of seasoned rice", request["json"]["prompt"])
 
-            search.return_value = ([], None)
+            search.return_value = []
             self.assertEqual(ai_helper.generate_recipe_photo("Rice bowl"), (photo, False))
-            self.assertEqual(len(create.call_args.kwargs["contents"]), 1)
+            self.assertNotIn("Bowl of seasoned rice", create.call_args.kwargs["json"]["prompt"])
 
-            create.side_effect = ai_helper.genai.errors.ClientError(
-                429, {"error": {"status": "RESOURCE_EXHAUSTED"}}
-            )
+            response.json.return_value["result"]["image"] = "invalid!"
+            with self.assertRaisesRegex(ai_helper.AIUnavailable, "Couldn’t generate a photo"):
+                ai_helper.generate_recipe_photo("Rice bowl")
+
+            response.status_code = 429
             with self.assertRaisesRegex(ai_helper.AIUnavailable, "image generation quota or rate limit"):
                 ai_helper.generate_recipe_photo("Rice bowl")
 
@@ -402,6 +407,24 @@ class RecipeBoxTests(unittest.TestCase):
         }, headers=self.headers)
         self.assertIn("5 MB", response.json["answer"])
         self.assertNotIn("sources", response.json)
+
+    def test_chef_gives_cooking_advice_and_keeps_gemini_behind_editor_access(self):
+        path = "/api/chef-chat"
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fixture", "SECRET_KEY": "fixture"}), \
+                patch("chef_rag._generate", return_value='{"answer":"Scrape up the browned bits with a little stock."}') as generate:
+            reply = self.client.post(path, json={"question": "How do I cook basmati rice?"}, headers=self.headers)
+            self.assertIn("Simmer covered", reply.json["answer"])
+            generate.assert_not_called()
+            question = {"question": "How do I deglaze a pan?"}
+            reply = self.client.post(path, json=question, headers=self.headers)
+            self.assertIn("browned bits", reply.json["answer"])
+            generate.assert_called_once()
+            generate.reset_mock()
+            with patch.object(recipe_box, "ON_RENDER", True):
+                reply = self.client.post(path, json=question, headers=self.headers)
+                self.assertIn("don’t have a tip", reply.json["answer"])
+                generate.assert_not_called()
+            self.assertIsNone(ChefSessionCache.query.first())
 
     def test_chef_cache_capacity_and_expiration(self):
         key = "test-cache"
