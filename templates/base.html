@@ -43,6 +43,7 @@
                 {% if not config.ACCOUNT_AUTH or g.recipe_user_id %}
                 <a href="{{ url_for('home', favorites='1') }}" class="nav-link">★ Favorites</a>
                 <a href="{{ url_for('shopping_list') }}" class="nav-link">Shopping List</a>
+                <a href="{{ url_for('little_kitchen') }}" class="nav-link">Play &amp; Cook</a>
                 <a href="{{ url_for('swagger_bp.swagger_ui') }}" class="nav-link"
                     target="_blank">⚡ API Docs</a>
                 {% endif %}

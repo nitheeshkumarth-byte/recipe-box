@@ -72,6 +72,8 @@ try:
                     page.unroute("**/api/session")
                     page.reload()
                     assert page.request.get(url + "/apidocs").ok
+                    game_page = page.request.get(url + "/game")
+                    assert game_page.ok and 'id="game-canvas"' in game_page.text()
                     page.get_by_role("link", name="Add Recipe").click()
                     page.locator(".recipe-form .form-card").first.wait_for()
                     assert page.locator(".recipe-form .form-card").count() == 2
@@ -101,6 +103,10 @@ try:
                     assert page.get_by_label("Recipe photo").evaluate("input => input.files[0].name") == "generated-recipe.png"
                     page.get_by_role("button", name="Save Recipe").click()
                     page.get_by_role("heading", name="Weeknight rice").wait_for()
+                    page.get_by_role("button", name="Let’s Cook").click()
+                    cook = page.get_by_role("dialog", name="Weeknight rice")
+                    cook.get_by_role("button", name="Stir pot").click()
+                    cook.get_by_role("button", name="Close cooking game").click()
                     assert page.locator(".recipe-photo").evaluate("image => image.decode().then(() => image.naturalWidth)") == 20
                     assert page.locator(".actions-bar .action-btn").count() == 3
                     assert page.locator("#ingredient-list .ing-name").inner_text() == "Rice"

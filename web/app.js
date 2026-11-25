@@ -24,6 +24,7 @@ async function start() {
         window.csrfHeaders = { 'X-CSRF-Token': session.csrf_token };
         document.getElementById('favorites-link').hidden = false;
         document.getElementById('shopping-link').hidden = false;
+        document.getElementById('game-link').hidden = false;
         document.getElementById('api-docs-link').hidden = false;
         document.getElementById('add-link').hidden = false;
         document.getElementById('editor-sign-in').hidden = !session.editor_available || session.editor_signed_in;

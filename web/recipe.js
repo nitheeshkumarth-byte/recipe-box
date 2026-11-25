@@ -1,5 +1,7 @@
 import { api, escape, photoMarkup } from './api.js';
 import { mountRecipePhoto } from '../static/recipe-photo.js';
+import { mountCookingGame } from '../static/cooking-game.js';
+import '../static/cooking-game.css';
 
 function recipeAction(button, status, action) {
     return async event => {
@@ -60,6 +62,7 @@ export function renderRecipe(content, recipe) {
                 <button type="button" id="nutrition-btn"${recipe.ingredients.length ? '' : ' hidden'}>Estimate nutrition</button>
             </div>
             <h2>Instructions</h2>
+            <button type="button" class="cook-launch" data-cook-launch hidden><span aria-hidden="true">🍲</span> Let’s Cook</button>
             <p class="recipe-instructions">${escape(recipe.instructions)}</p>
             <p role="status" id="recipe-status"></p>
             <div class="actions-bar">
@@ -81,6 +84,7 @@ export function renderRecipe(content, recipe) {
     }
     servings.addEventListener('input', updateAmounts);
     updateAmounts();
+    mountCookingGame(content.querySelector('.recipe-card'));
 
     const favorite = content.querySelector('#favorite');
     const favoriteStar = content.querySelector('#recipe-favorite-star');

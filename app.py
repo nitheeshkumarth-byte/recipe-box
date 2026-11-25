@@ -660,6 +660,11 @@ def shopping_list():
     return render_template("shopping_list.html")
 
 
+@app.get("/game")
+def little_kitchen():
+    return render_template("little_kitchen.html")
+
+
 @app.route("/add", methods=["GET", "POST"])
 def add_recipe():
     if request.method == "POST":

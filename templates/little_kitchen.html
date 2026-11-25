@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#533a35">
+    <title>Little Kitchen · Recipe Box</title>
+    <link rel="icon" href="{{ url_for('pwa.favicon') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='little-kitchen/game.css') }}">
+    <script defer src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"
+        integrity="sha384-AvQiDMZAVLda3VtAoU5MCfBz8pzXhteb2CiUJeKBmPlWzpXj1uJ96Km11+YuFNu/" crossorigin="anonymous"></script>
+    <script type="module" src="{{ url_for('static', filename='little-kitchen/game.js') }}"></script>
+</head>
+<body>
+    <header class="game-header">
+        <a href="{{ url_for('home') }}">← Recipe Box</a>
+        <div id="game-hud" aria-label="Restaurant status" hidden></div>
+        <button type="button" id="game-home" hidden>Game menu</button>
+    </header>
+    <main class="game-frame">
+        <div id="game-canvas" class="game-canvas" aria-label="Illustrated pizza restaurant and cooking station"></div>
+        <section id="game-panel" class="game-panel" aria-label="Game controls">
+            <h1>Little Kitchen</h1>
+            <p role="status">Opening the restaurant…</p>
+            <progress aria-label="Loading game"></progress>
+        </section>
+        <p id="game-notice" role="status" class="game-notice"></p>
+        <noscript><p>Turn on JavaScript to play Little Kitchen.</p></noscript>
+    </main>
+</body>
+</html>

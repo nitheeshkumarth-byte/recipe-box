@@ -89,6 +89,7 @@
         </div>
 
         <h2>Instructions</h2>
+        <button type="button" class="cook-launch" data-cook-launch hidden><span aria-hidden="true">🍲</span> Let’s Cook</button>
         <p class="recipe-instructions">{{ recipe.instructions }}</p>
 
         <div class="actions-bar">
@@ -106,6 +107,12 @@
             </form>
         </div>
     </div>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='cooking-game.css') }}">
+    <script type="module">
+        import { mountCookingGame } from {{ url_for('static', filename='cooking-game.js')|tojson }};
+        mountCookingGame(document.querySelector('.recipe-card'));
+    </script>
 
     <script>
         const originBtn = document.getElementById("origin-btn");

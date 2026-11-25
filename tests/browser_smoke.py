@@ -83,7 +83,10 @@ try:
         page.get_by_role("link", name="Add Recipe").click()
         page.get_by_role("button", name="Generate Photo").wait_for()
         page.get_by_label("Title").fill("Weeknight rice")
-        page.get_by_label("Step by step").fill("Cook the rice.")
+        page.get_by_label("Step by step").fill(
+            "Dice the onion. Mix the rice. Cook the rice for 2 seconds. "
+            "Knead the dough. Scoop the ice cream."
+        )
         page.locator('input[name="ing_name"]').first.fill("Rice")
         page.locator('input[name="ing_amount"]').first.fill("2")
         page.locator('input[name="ing_unit"]').first.fill("cups")
@@ -93,6 +96,25 @@ try:
         assert "Weeknight rice" in front_card.inner_text()
         assert front_card.locator(".flashcard-media").bounding_box()["height"] > 205
         front_card.click()
+        page.get_by_role("button", name="Let’s Cook").click()
+        game = page.get_by_role("dialog", name="Weeknight rice")
+        assert game.locator(".cook-stage").get_attribute("data-cut") == "dice"
+        for _ in range(5):
+            game.get_by_role("button", name="Dice", exact=True).click()
+        game.get_by_text("Station complete.").wait_for()
+        advance = game.get_by_role("button", name="Next step")
+        advance.click()
+        game.get_by_role("button", name="Mix", exact=True).click()
+        advance.click()
+        game.get_by_role("button", name="Start timer").click()
+        game.get_by_text("Recipe timer complete for step 3.").wait_for()
+        advance.click()
+        game.get_by_role("button", name="Knead", exact=True).click()
+        advance.click()
+        game.get_by_role("button", name="Scoop", exact=True).click()
+        game.get_by_role("button", name="Finish recipe").click()
+        game.get_by_text("Recipe complete", exact=True).wait_for()
+        game.get_by_role("button", name="Back to recipe").click()
         page.get_by_role("button", name="Add to Favorites").click()
         page.get_by_role("button", name="Theme").click()
         page.get_by_role("button", name="Midnight Dark").click()
