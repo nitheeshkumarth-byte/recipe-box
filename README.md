@@ -117,6 +117,12 @@ Browser forms and Swagger UI include a session-bound CSRF token. Custom API cons
 
 Run the local regression checks with `python -m unittest discover -s tests -v`.
 
+### Hybrid recipe search
+
+Install `requirements-recipe-search.txt` and set `RECIPE_HYBRID_SEARCH=1` to enable the ingredient-search pilot on the home page and `GET /api/recipes?q=...`. Existing literal matches appear first. Additional matches combine SQLite FTS5 BM25 and local MiniLM vectors from ChromaDB. Tag, favorites, and owner filters apply to both paths. The search bar returns recipe cards without an LLM call.
+
+Local Chroma data is stored under `instance/recipe-chroma`. The first search downloads MiniLM unless `RECIPE_MINILM_PATH` points to a directory with the extracted `onnx/` model. Use `RECIPE_CHROMA_URL` for a private, shared Chroma server when running multiple web workers. Each search reconciles the visible ingredient index with current recipes. If Chroma is unavailable, the app can still return literal and BM25 matches.
+
 ## Chef chat and session memory
 
 The chef answers site questions and looks up saved recipe data the current account can access. It calculates ingredient quantities and nutrition totals from saved values and explains the arithmetic. Recipe answers run on the server without sending recipe records to Gemini. For site help, optional Gemini mode uses only vetted project excerpts.

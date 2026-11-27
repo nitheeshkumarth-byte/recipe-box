@@ -37,6 +37,7 @@ from chef_rag import answer_cooking_question, answer_question, is_cooking_questi
 from chef_vectors import register_vector_commands
 from recipe_access import audit, recipe_query, register_access_commands
 from recipe_auth import configure_auth, signed_in_user
+from recipe_catalog_search import ranked_ingredients
 from recipe_chat import answer_recipe_question
 from pwa import pwa_bp
 from shared_cache import CacheUnavailable, allow_ai_request, allow_guest_request
@@ -558,27 +559,55 @@ def recipe_collection():
     favorites_only = request.args.get("favorites") == "1"
     page = min(max(request.args.get("page", 1, type=int), 1), 2_147_483_647 // RECIPES_PER_PAGE)
 
-    query = recipe_query()
+    visible = recipe_query()
+    query = visible
+    if tag:
+        query = query.filter(Recipe.tags.any(Tag.name == tag))
+    if favorites_only:
+        query = query.filter(Recipe.is_favorite == True)
 
     if search:
         pattern = f"%{search}%"
-        query = query.filter(or_(
+        literal = query.filter(or_(
             Recipe.title.ilike(pattern),
             Recipe.instructions.ilike(pattern),
             Recipe.tags.any(Tag.name.ilike(pattern)),
             Recipe.ingredient_lines.any(RecipeIngredient.name.ilike(pattern)),
         ))
-    if tag:
-        query = query.filter(Recipe.tags.any(Tag.name == tag))
-
-    if favorites_only:
-        query = query.filter(Recipe.is_favorite == True)
+        if os.getenv("RECIPE_HYBRID_SEARCH") == "1" and len(search) <= 300:
+            pagination = hybrid_recipe_page(visible, query, literal, search, page)
+            return pagination, search, tag, favorites_only
+        query = literal
 
     pagination = query.order_by(Recipe.id.desc()).paginate(
         page=page, per_page=RECIPES_PER_PAGE, error_out=False
     )
 
     return pagination, search, tag, favorites_only
+
+
+def hybrid_recipe_page(visible, filtered, literal, search, page):
+    ingredients = {}
+    for recipe_id, ingredient in (visible.with_entities(Recipe.id, RecipeIngredient.name)
+                                  .join(Recipe.ingredient_lines).order_by(RecipeIngredient.id)):
+        ingredients.setdefault(str(recipe_id), []).append(ingredient)
+    documents = {key: "\n".join(names) for key, names in ingredients.items()}
+    eligible = {str(row.id) for row in filtered.with_entities(Recipe.id)}
+    scope = f"{db.engine.url}|{g.get('recipe_user_id') or 'public'}"
+    ranked = ranked_ingredients(
+        search, documents, eligible, path=Path(app.instance_path) / "recipe-chroma",
+        scope=scope, logger=app.logger,
+    )
+    exact = [str(row.id) for row in literal.with_entities(Recipe.id).order_by(Recipe.id.desc())]
+    ids = list(dict.fromkeys(exact + ranked))
+    start = (page - 1) * RECIPES_PER_PAGE
+    page_ids = [int(key) for key in ids[start:start + RECIPES_PER_PAGE]]
+    recipes = {recipe.id: recipe for recipe in filtered.filter(Recipe.id.in_(page_ids))} if page_ids else {}
+    pages = math.ceil(len(ids) / RECIPES_PER_PAGE)
+    return SimpleNamespace(
+        items=[recipes[key] for key in page_ids if key in recipes], total=len(ids), page=page, pages=pages,
+        has_prev=page > 1, prev_num=page - 1, has_next=page < pages, next_num=page + 1,
+    )
 
 
 def recipe_payload(recipe, *, detail=False):
